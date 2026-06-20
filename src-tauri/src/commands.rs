@@ -112,25 +112,27 @@ pub async fn do_trigger_overlay(
     state: &AppState,
     app: &AppHandle,
 ) -> Result<()> {
-    // Deduplicate: if an automatic source (log/ocr) already fired within the last
-    // 60 seconds, skip. This prevents double entries when both the EE.log watcher
-    // and the screen OCR watcher detect the same relic crack.
+    // Deduplicate same-source rapid repeats (10s window). Different sources
+    // (log vs ocr) overwrite each other so the latest result always wins.
     let is_auto = source == "log" || source == "ocr";
     if is_auto {
         let mut last = state.last_auto_trigger.lock().unwrap();
         let now = std::time::Instant::now();
-        if let Some(t) = *last {
-            if t.elapsed().as_secs() < 60 {
+        if let Some((t, ref prev_source)) = *last {
+            if prev_source == &source && t.elapsed().as_secs() < 10 {
                 log::info!(
-                    "Dedup: skipping {} trigger ({:.0}s since last)",
+                    "Dedup: skipping duplicate {} trigger ({:.0}s since last)",
                     source,
                     t.elapsed().as_secs_f32()
                 );
                 return Ok(());
             }
         }
-        *last = Some(now);
+        *last = Some((now, source.clone()));
     }
+
+    // Cap at 4 — a relic crack always has exactly 4 reward slots.
+    let items: Vec<String> = items.into_iter().take(4).collect();
 
     // Read settings once up front so we have dismiss_hotkey, preference, etc.
     let settings: Settings = {

@@ -296,8 +296,8 @@ export function SettingsPage() {
               and never stored or transmitted anywhere.
             </p>
             <p className="text-[13px] text-wf-muted leading-relaxed">
-              Item name recognition (OCR) currently requires Windows. Screen capture and
-              template detection work on Linux and macOS too.
+              Item name recognition (OCR) works on Windows and Linux. Screen capture and
+              template detection work on macOS too.
             </p>
             {/* Poll interval + scan delay */}
             <div className="flex flex-col gap-4 pt-1 border-t border-wf-border/40">

@@ -506,17 +506,17 @@ pub async fn restart_watcher(
 }
 
 #[tauri::command]
-pub async fn get_watcher_status(state: State<'_, AppState>) -> String {
+pub async fn get_watcher_status(state: State<'_, AppState>) -> Result<String, String> {
     let wf_running = crate::screen_watcher::warframe_is_running();
     let interval = state.poll_interval_secs.load(Ordering::Relaxed);
 
-    if !wf_running {
+    Ok(if !wf_running {
         "Paused — Warframe not running".to_string()
     } else if interval == 0 {
         "Active — manual scan only (auto-scan off)".to_string()
     } else {
         format!("Active — scanning every {}s", interval)
-    }
+    })
 }
 
 #[tauri::command]

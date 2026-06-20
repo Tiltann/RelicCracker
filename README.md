@@ -4,23 +4,34 @@
 
 Warframe relic reward overlay. When you crack a relic, it shows platinum prices and ducat values for each reward before you pick one.
 
+## Screenshots
+
+| Dashboard | Completions |
+|:---:|:---:|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Completions](docs/screenshots/completions.png) |
+
+| Logs | Settings |
+|:---:|:---:|
+| ![Logs](docs/screenshots/logs.png) | ![Settings](docs/screenshots/settings.png) |
+
 ## What it does
 
-- Detects the reward screen automatically via template matching + OCR (Windows only for OCR)
+- Detects the reward screen automatically via template matching + OCR (Windows and Linux)
 - Shows a small always-on-top overlay with prices from warframe.market
-- Highlights the best pick by combined plat/ducat value
+- Highlights the best pick with a configurable preference (max plat, max ducats, or set completion)
 - Shows price trend (rising/falling) and vault status
 - Saves session history so you can review past runs
+- Tracks Prime set completion progress with per-component plat and ducat values
 - Notifies you when a new version is available on GitHub
 
 ## Platform support
 
 | Platform | Screen detection | OCR | Overlay |
 |---|---|---|---|
-| Windows 10/11 | yes | yes | yes |
-| Linux (X11/Wayland) | yes | no | yes |
+| Windows 10/11 | yes | yes (Windows.Media.Ocr) | yes |
+| Linux (X11/Wayland) | yes | yes (Tesseract) | yes |
 
-OCR uses Windows.Media.Ocr and is Windows-only. On Linux you can use EE.log watching (enabled in Settings) for automatic detection, or the manual scan hotkey as a fallback.
+On Linux, install `tesseract-ocr` and the appropriate language data package (e.g. `tesseract-ocr-eng`) before running. EE.log watching (Settings) works on all platforms as an additional detection path.
 
 ## Build
 
@@ -62,7 +73,7 @@ Supported: English, Deutsch, Français, Español, Italiano, Polski, Português, 
 
 1. Screen is captured on a configurable interval while Warframe is running
 2. A template SAD (sum of absolute differences) check discards non-reward frames instantly
-3. Windows OCR reads item names from the lower portion of the screen (60–85% height)
+3. OCR reads item names from the lower portion of the screen (60–85% height) — Windows.Media.Ocr on Windows, Tesseract on Linux
 4. Names are matched against the warframestat.us item database; Levenshtein fallback handles OCR typos
 5. Prices are fetched in parallel from warframe.market's 48h statistics endpoint
 
@@ -77,6 +88,7 @@ Supported: English, Deutsch, Français, Español, Italiano, Polski, Português, 
 - [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/)
 - [Tailwind CSS v4](https://tailwindcss.com/)
 - [windows-rs](https://github.com/microsoft/windows-rs) — Windows.Media.Ocr bindings
+- [leptess](https://github.com/houqp/leptess) — Tesseract OCR bindings (Linux)
 - [xcap](https://github.com/nashaofu/xcap) — cross-platform screen capture
 - [reqwest](https://github.com/seanmonstar/reqwest) — HTTP client
 

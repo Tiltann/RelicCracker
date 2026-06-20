@@ -57,10 +57,17 @@ pub async fn raw_ocr_lines(y_min_frac: f32) -> Result<Vec<String>> {
         std::thread::spawn(move || { let _ = tx.send(ocr_rgba_image(img, y_min_frac, 1.0, "en")); });
         return rx.await?;
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "linux")]
+    {
+        let img = capture_warframe_or_screen()?;
+        return tokio::task::spawn_blocking(move || {
+            tesseract_ocr(&img, y_min_frac, 1.0, "en")
+        }).await?;
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     {
         let _ = y_min_frac;
-        Err(anyhow!("OCR requires Windows (Windows.Media.Ocr)"))
+        Err(anyhow!("OCR is only supported on Windows and Linux"))
     }
 }
 
@@ -135,13 +142,52 @@ async fn scan_rgba_image(
         log::info!("OCR scan: {} raw lines, {} items found: {:?}", raw_lines.len(), found.len(), found);
         return Ok((found, raw_lines));
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "linux")]
+    {
+        let lang_owned = lang.to_string();
+        let raw_lines = tokio::task::spawn_blocking(move || {
+            tesseract_ocr(&img, y_min_frac, y_max_frac, &lang_owned)
+        }).await??;
+
+        let mut found: Vec<String> = Vec::new();
+
+        for text in &raw_lines {
+            if let Some(info) = drops.ocr_match(text).await {
+                if !found.contains(&info.name) {
+                    found.push(info.name.clone());
+                }
+            } else {
+                for info in drops.ocr_match_windows(text).await {
+                    if !found.contains(&info.name) {
+                        found.push(info.name.clone());
+                    }
+                }
+            }
+            if found.len() >= 4 { break; }
+        }
+
+        let mut i = 0;
+        while i + 1 < raw_lines.len() && found.len() < 4 {
+            let joined = format!("{} {}", raw_lines[i], raw_lines[i + 1]);
+            if let Some(info) = drops.ocr_match(&joined).await {
+                if !found.contains(&info.name) {
+                    found.push(info.name.clone());
+                }
+            }
+            i += 1;
+        }
+
+        log::info!("OCR scan: {} raw lines, {} items found: {:?}", raw_lines.len(), found.len(), found);
+        return Ok((found, raw_lines));
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     {
         let _ = (img, y_min_frac, y_max_frac, lang);
-        Err(anyhow!("OCR requires Windows"))
+        Err(anyhow!("OCR is only supported on Windows and Linux"))
     }
 }
 
+#[cfg(target_os = "windows")]
 fn lang_to_bcp47(lang: &str) -> &'static str {
     match lang {
         "de" => "de-DE",
@@ -157,6 +203,60 @@ fn lang_to_bcp47(lang: &str) -> &'static str {
         "ja" => "ja-JP",
         _ => "en-US",
     }
+}
+
+#[cfg(target_os = "linux")]
+fn tess_lang(lang: &str) -> &'static str {
+    match lang {
+        "de" => "deu",
+        "fr" => "fra",
+        "es" => "spa",
+        "it" => "ita",
+        "pl" => "pol",
+        "pt" => "por",
+        "ru" => "rus",
+        "ko" => "kor",
+        "zh" => "chi_sim",
+        "tc" => "chi_tra",
+        "ja" => "jpn",
+        _ => "eng",
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn tesseract_ocr(img: &RgbaImage, y_min_frac: f32, y_max_frac: f32, lang: &str) -> Result<Vec<String>> {
+    use image::DynamicImage;
+
+    let img_h = img.height();
+    let y_min = (img_h as f32 * y_min_frac) as u32;
+    let y_max = ((img_h as f32 * y_max_frac) as u32).min(img_h);
+    let crop_h = y_max.saturating_sub(y_min).max(1);
+
+    let mut png: Vec<u8> = Vec::new();
+    DynamicImage::ImageRgba8(img.clone())
+        .crop_imm(0, y_min, img.width(), crop_h)
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)?;
+
+    let tess_code = tess_lang(lang);
+    let mut lt = leptess::LepTess::new(None, tess_code)
+        .map_err(|e| anyhow!("Tesseract init failed ({tess_code}): {e}"))?;
+    lt.set_image_from_mem(&png)
+        .map_err(|e| anyhow!("Tesseract set_image_from_mem failed: {e}"))?;
+
+    let text = lt.get_utf8_text()
+        .map_err(|e| anyhow!("Tesseract get_utf8_text failed: {e}"))?;
+
+    let lines: Vec<String> = text
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    log::debug!(
+        "OCR (tesseract): {} lines in Y [{:.0}%–{:.0}%] (lang={})",
+        lines.len(), y_min_frac * 100.0, y_max_frac * 100.0, lang
+    );
+    Ok(lines)
 }
 
 #[cfg(target_os = "windows")]

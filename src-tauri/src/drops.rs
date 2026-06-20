@@ -132,14 +132,19 @@ impl DropDatabase {
             return None;
         }
 
+        self.match_normalized(&text).await
+    }
+
+    async fn match_normalized(&self, text: &str) -> Option<ItemInfo> {
         let by_name = self.by_name.read().await;
 
-        if let Some(info) = by_name.get(text.as_str()) {
+        if let Some(info) = by_name.get(text) {
             log::debug!("OCR exact: {:?}", info.name);
             return Some(info.clone());
         }
 
-        let max_dist = if text.len() <= 15 { 2usize } else { 3 };
+        // For short items allow 2 edits, longer allow 3. Never allow > 10% of length.
+        let max_dist = if text.len() <= 20 { 1usize } else { 2 };
         let mut best_dist = usize::MAX;
         let mut best: Option<ItemInfo> = None;
 
@@ -147,7 +152,7 @@ impl DropDatabase {
             if key.len().abs_diff(text.len()) > max_dist.min(best_dist) {
                 continue;
             }
-            let dist = edit_distance(&text, key);
+            let dist = edit_distance(text, key);
             if dist < best_dist {
                 best_dist = dist;
                 best = Some(info.clone());
@@ -156,12 +161,38 @@ impl DropDatabase {
 
         if best_dist <= max_dist {
             if let Some(ref info) = best {
-                log::debug!("OCR levenshtein (d={}): {:?} → {:?}", best_dist, text, info.name);
+                log::debug!("OCR levenshtein (d={}): {:?} -> {:?}", best_dist, text, info.name);
             }
             best
         } else {
             None
         }
+    }
+
+    /// Try matching each sliding window of words from a long OCR line.
+    /// Windows OCR often concatenates all item names (left, center, right card) into
+    /// a single line when they sit at the same vertical band on screen.
+    pub async fn ocr_match_windows(&self, raw: &str) -> Vec<ItemInfo> {
+        let text = normalize_ocr(raw);
+        let lang = self.lang.read().await.clone();
+        let words: Vec<&str> = text.split_whitespace().collect();
+        let mut results: Vec<ItemInfo> = Vec::new();
+
+        // Try every contiguous sub-sequence of 2..=6 words
+        for len in 2..=6usize {
+            for start in 0..words.len().saturating_sub(len - 1) {
+                let window = words[start..start + len].join(" ");
+                if !is_relic_reward_line(&window, &lang) {
+                    continue;
+                }
+                if let Some(info) = self.match_normalized(&window).await {
+                    if !results.iter().any(|r: &ItemInfo| r.name == info.name) {
+                        results.push(info);
+                    }
+                }
+            }
+        }
+        results
     }
 
     pub async fn fuzzy_match(&self, raw: &str) -> Option<ItemInfo> {

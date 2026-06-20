@@ -57,9 +57,37 @@ pub fn app_data_dir_from_handle(app: &tauri::AppHandle) -> PathBuf {
     app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
+fn init_logging() {
+    use simplelog::*;
+
+    // Always write to a rotating log file next to the app data dir.
+    // The file is overwritten each launch so it never grows unbounded.
+    let log_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("RelicCracker");
+    let _ = std::fs::create_dir_all(&log_dir);
+    let log_path = log_dir.join("reliccracker.log");
+
+    let level = if cfg!(debug_assertions) { LevelFilter::Debug } else { LevelFilter::Info };
+    let config = ConfigBuilder::new()
+        .set_time_format_rfc3339()
+        .build();
+
+    let file = std::fs::File::create(&log_path).ok();
+    let mut loggers: Vec<Box<dyn SharedLogger>> = vec![
+        TermLogger::new(level, config.clone(), TerminalMode::Mixed, ColorChoice::Auto),
+    ];
+    if let Some(f) = file {
+        loggers.push(WriteLogger::new(level, config, f));
+    }
+    let _ = CombinedLogger::init(loggers);
+
+    log::info!("RelicCracker starting — log: {}", log_path.display());
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    env_logger::init();
+    init_logging();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())

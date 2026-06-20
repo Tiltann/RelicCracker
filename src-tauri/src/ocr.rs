@@ -103,15 +103,24 @@ async fn scan_rgba_image(
         let mut found: Vec<String> = Vec::new();
 
         for text in &raw_lines {
+            // Short enough to match normally
             if let Some(info) = drops.ocr_match(text).await {
                 if !found.contains(&info.name) {
                     found.push(info.name.clone());
+                }
+            } else {
+                // Long lines: OCR likely concatenated multiple item names (same horizontal
+                // band). Extract all matching word-windows from the single line.
+                for info in drops.ocr_match_windows(text).await {
+                    if !found.contains(&info.name) {
+                        found.push(info.name.clone());
+                    }
                 }
             }
             if found.len() >= 4 { break; }
         }
 
-        // Windows OCR sometimes splits long item names across two lines; try joining adjacent pairs.
+        // Also try joining adjacent line pairs in case a single name was split across lines.
         let mut i = 0;
         while i + 1 < raw_lines.len() && found.len() < 4 {
             let joined = format!("{} {}", raw_lines[i], raw_lines[i + 1]);
@@ -123,6 +132,7 @@ async fn scan_rgba_image(
             i += 1;
         }
 
+        log::info!("OCR scan: {} raw lines, {} items found: {:?}", raw_lines.len(), found.len(), found);
         return Ok((found, raw_lines));
     }
     #[cfg(not(target_os = "windows"))]

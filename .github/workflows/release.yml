@@ -99,7 +99,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $version = (Select-String 'version = "' src-tauri/Cargo.toml | Select-Object -First 1).Line.Split('"')[1]
-          $exe = "src-tauri\target\release\RelicCracker.exe"
+          $exe = "src-tauri\target\release\relic-cracker.exe"
           $name = "RelicCracker_${version}_portable_x64.exe"
           $releaseId = '${{ needs.create-release.outputs.release_id }}'
           $uri = "https://uploads.github.com/repos/${{ github.repository }}/releases/$releaseId/assets?name=$name"

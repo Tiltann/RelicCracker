@@ -78,7 +78,10 @@ jobs:
             libxcb1-dev \
             libxrandr-dev \
             libdbus-1-dev \
-            libxdo-dev
+            libxdo-dev \
+            libleptonica-dev \
+            libtesseract-dev \
+            tesseract-ocr
 
       - run: bun install
 

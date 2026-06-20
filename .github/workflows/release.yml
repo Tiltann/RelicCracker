@@ -16,20 +16,25 @@ jobs:
       contents: write
     runs-on: ubuntu-latest
     outputs:
-      release_id: ${{ steps.create.outputs.releaseId }}
+      release_id: ${{ steps.create.outputs.result }}
     steps:
       - uses: actions/checkout@v4
-
-      - uses: tauri-apps/tauri-action@v0
+      - name: Create draft release
         id: create
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/github-script@v7
         with:
-          tagName: ${{ inputs.tag_name || github.ref_name }}
-          releaseName: RelicCracker ${{ inputs.tag_name || github.ref_name }}
-          releaseBody: Download the installer for your platform from the assets below.
-          releaseDraft: true
-          prerelease: false
+          script: |
+            const tag = '${{ inputs.tag_name || github.ref_name }}';
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: `RelicCracker ${tag}`,
+              body: 'Download the installer or portable exe for your platform from the assets below.',
+              draft: true,
+              prerelease: false,
+            });
+            return data.id;
 
   build:
     needs: create-release
@@ -83,6 +88,21 @@ jobs:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.args }}
 
+      - name: Upload portable exe
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = (Select-String 'version = "' src-tauri/Cargo.toml | Select-Object -First 1).Line.Split('"')[1]
+          $exe = "src-tauri\target\release\RelicCracker.exe"
+          $name = "RelicCracker_${version}_portable_x64.exe"
+          $releaseId = '${{ needs.create-release.outputs.release_id }}'
+          $uri = "https://uploads.github.com/repos/${{ github.repository }}/releases/$releaseId/assets?name=$name"
+          Invoke-RestMethod -Uri $uri -Method Post `
+            -Headers @{ Authorization = "Bearer $env:GITHUB_TOKEN"; "Content-Type" = "application/octet-stream" } `
+            -InFile $exe
+
   publish-release:
     needs: [create-release, build]
     permissions:
@@ -97,6 +117,6 @@ jobs:
             await github.rest.repos.updateRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              release_id: process.env.RELEASE_ID,
+              release_id: parseInt(process.env.RELEASE_ID),
               draft: false,
             });

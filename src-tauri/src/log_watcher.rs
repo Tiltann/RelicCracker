@@ -314,9 +314,19 @@ pub fn default_ee_log_path() -> PathBuf {
 
 #[cfg(target_os = "windows")]
 fn default_ee_log_path_impl() -> PathBuf {
-    dirs::data_local_dir()
-        .unwrap_or_else(|| PathBuf::from("C:/Users/Public/AppData/Local"))
-        .join("Temp/Warframe/EE.log")
+    let local = dirs::data_local_dir()
+        .unwrap_or_else(|| PathBuf::from("C:/Users/Public/AppData/Local"));
+    // Current Warframe: %LOCALAPPDATA%\Warframe\EE.log
+    // Older installs used: %LOCALAPPDATA%\Temp\Warframe\EE.log
+    let primary = local.join("Warframe/EE.log");
+    if primary.exists() {
+        return primary;
+    }
+    let legacy = local.join("Temp/Warframe/EE.log");
+    if legacy.exists() {
+        return legacy;
+    }
+    primary
 }
 
 #[cfg(target_os = "linux")]

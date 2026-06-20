@@ -89,6 +89,22 @@ pub async fn do_trigger_overlay(
     state: &AppState,
     app: &AppHandle,
 ) -> Result<()> {
+    // Deduplicate: if an automatic source (log/ocr) already fired within the last
+    // 60 seconds, skip. This prevents double entries when both the EE.log watcher
+    // and the screen OCR watcher detect the same relic crack.
+    let is_auto = source == "log" || source == "ocr";
+    if is_auto {
+        let mut last = state.last_auto_trigger.lock().unwrap();
+        let now = std::time::Instant::now();
+        if let Some(t) = *last {
+            if t.elapsed().as_secs() < 60 {
+                log::info!("Dedup: skipping {} trigger ({:.0}s since last)", source, t.elapsed().as_secs_f32());
+                return Ok(());
+            }
+        }
+        *last = Some(now);
+    }
+
     log::info!("Triggering overlay with {} items (source: {})", items.len(), source);
 
     let mut translated: Vec<(String, u32, bool)> = Vec::new();

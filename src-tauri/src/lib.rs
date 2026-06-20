@@ -29,6 +29,9 @@ pub struct AppState {
     pub scan_delay_ms: Arc<AtomicU32>,
     pub poll_interval_secs: Arc<AtomicU32>,
     pub game_language: Arc<tokio::sync::RwLock<String>>,
+    /// Timestamp of the last auto-triggered overlay (log or ocr). Used to
+    /// deduplicate when both sources fire for the same relic crack.
+    pub last_auto_trigger: Arc<std::sync::Mutex<Option<std::time::Instant>>>,
 }
 
 impl AppState {
@@ -45,6 +48,7 @@ impl AppState {
             scan_delay_ms: Arc::new(AtomicU32::new(0)),
             poll_interval_secs: Arc::new(AtomicU32::new(2)),
             game_language: Arc::new(tokio::sync::RwLock::new("en".to_string())),
+            last_auto_trigger: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 }

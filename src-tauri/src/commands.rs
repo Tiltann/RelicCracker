@@ -289,7 +289,7 @@ pub async fn do_ocr_scan(app: &AppHandle) -> Result<()> {
             sad_score: None,
             sad_threshold: crate::template::REWARD_THRESHOLD,
             template_matched: true,
-            ocr_lines: raw_lines,
+            ocr_lines: raw_lines.clone(),
             items_found: items.clone(),
             duration_ms: scan_start.elapsed().as_millis() as u64,
         });
@@ -302,7 +302,17 @@ pub async fn do_ocr_scan(app: &AppHandle) -> Result<()> {
         return Ok(());
     }
 
-    crate::app_log::info(app, format!("OCR: {} items — {}", items.len(), items.join(", ")));
+    crate::app_log::info(app, format!("OCR: {} item(s) found — {}", items.len(), items.join(", ")));
+    if items.len() < 4 {
+        for line in &raw_lines {
+            if line.to_lowercase().contains("prime")
+                || line.to_lowercase().contains("blueprint")
+                || line.to_lowercase().contains("forma")
+            {
+                crate::app_log::info(app, format!("  raw: {line:?}"));
+            }
+        }
+    }
     do_trigger_overlay(items, "ocr".into(), &state, app).await
 }
 

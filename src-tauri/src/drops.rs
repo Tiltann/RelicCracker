@@ -184,11 +184,13 @@ impl DropDatabase {
         let words: Vec<&str> = text.split_whitespace().collect();
         let mut results: Vec<ItemInfo> = Vec::new();
 
-        // Try every contiguous sub-sequence of 2..=6 words
+        // Try every contiguous sub-sequence of 2..=6 words.
+        // We skip the word-count/length gates here (the window size controls that)
+        // and only require a relic keyword so we don't hit the DB for every window.
         for len in 2..=6usize {
             for start in 0..words.len().saturating_sub(len - 1) {
                 let window = words[start..start + len].join(" ");
-                if !is_relic_reward_line(&window, &lang) {
+                if !has_relic_keyword(&window, &lang) {
                     continue;
                 }
                 if let Some(info) = self.match_normalized(&window).await {
@@ -274,12 +276,7 @@ fn blueprint_keyword(lang: &str) -> &'static str {
     }
 }
 
-fn is_relic_reward_line(s: &str, lang: &str) -> bool {
-    // Must be at least two words and a reasonable length
-    let word_count = s.split_whitespace().count();
-    if word_count < 2 || word_count > 7 { return false; }
-    if s.len() < 7 || s.len() > 55 { return false; }
-
+fn has_relic_keyword(s: &str, lang: &str) -> bool {
     let bp = blueprint_keyword(lang);
     s.contains("prime")
         || s.contains("forma")
@@ -289,6 +286,14 @@ fn is_relic_reward_line(s: &str, lang: &str) -> bool {
         || s.contains("catalyst")
         || s.contains("ayatan")
         || s.contains("riven")
+}
+
+fn is_relic_reward_line(s: &str, lang: &str) -> bool {
+    // Must be at least two words and a reasonable length
+    let word_count = s.split_whitespace().count();
+    if word_count < 2 || word_count > 7 { return false; }
+    if s.len() < 7 || s.len() > 55 { return false; }
+    has_relic_keyword(s, lang)
 }
 
 fn strip_qty_prefix(s: &str) -> &str {

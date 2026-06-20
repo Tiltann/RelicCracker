@@ -1,18 +1,16 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { CompletionData, PrimeSetInfo } from "../types";
+import type { CompletionData, PrimeComponent, PrimeSetInfo } from "../types";
 
 type Filter = "all" | "wanted" | "complete";
 
 export function CompletionsPage() {
-  const [data, setData]         = useState<CompletionData | null>(null);
-  const [filter, setFilter]     = useState<Filter>("all");
-  const [search, setSearch]     = useState("");
-  const [loading, setLoading]   = useState(true);
+  const [data, setData]       = useState<CompletionData | null>(null);
+  const [filter, setFilter]   = useState<Filter>("all");
+  const [search, setSearch]   = useState("");
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
 
   async function load() {
     setLoading(true);
@@ -64,17 +62,17 @@ export function CompletionsPage() {
   if (!data) return null;
 
   const wantedSet = new Set(data.wanted_sets);
-  const ownedSet = new Set(data.owned_components);
+  const ownedSet  = new Set(data.owned_components);
 
   function isComplete(set: PrimeSetInfo) {
-    return set.components.every(c => ownedSet.has(c));
+    return set.components.every(c => ownedSet.has(c.name));
   }
 
   const lc = search.toLowerCase();
   const visible = data.prime_sets.filter(ps => {
     if (lc && !ps.name.toLowerCase().includes(lc)) return false;
-    if (filter === "wanted" && !wantedSet.has(ps.name)) return false;
-    if (filter === "complete" && !isComplete(ps)) return false;
+    if (filter === "wanted"   && !wantedSet.has(ps.name)) return false;
+    if (filter === "complete" && !isComplete(ps))          return false;
     return true;
   });
 
@@ -93,7 +91,8 @@ export function CompletionsPage() {
           </p>
         </div>
         {wantedCount > 0 && (
-          <div className="text-[12px] px-3 py-1.5 rounded-[5px]" style={{ background: "#0e1016", border: "1px solid #1c1f27", color: "#7a8090" }}>
+          <div className="text-[12px] px-3 py-1.5 rounded-[5px]"
+               style={{ background: "#0e1016", border: "1px solid #1c1f27", color: "#7a8090" }}>
             {completeCount}/{wantedCount} wanted sets complete
           </div>
         )}
@@ -142,9 +141,9 @@ export function CompletionsPage() {
 
       <div className="flex flex-col gap-2">
         {visible.map(ps => {
-          const wanted = wantedSet.has(ps.name);
-          const complete = isComplete(ps);
-          const ownedCount = ps.components.filter(c => ownedSet.has(c)).length;
+          const wanted    = wantedSet.has(ps.name);
+          const complete  = isComplete(ps);
+          const ownedCount = ps.components.filter(c => ownedSet.has(c.name)).length;
           const pct = ps.components.length > 0 ? ownedCount / ps.components.length : 0;
 
           return (
@@ -193,6 +192,20 @@ function SetCard({ set, wanted, complete, ownedCount, pct, ownedSet, onToggleWan
         className="flex items-center gap-3 px-3 py-2.5 cursor-pointer"
         onClick={() => setExpanded(v => !v)}
       >
+        {/* Set image */}
+        {set.image_url ? (
+          <img
+            src={set.image_url}
+            alt=""
+            className="w-[32px] h-[32px] shrink-0 rounded-[3px] object-contain"
+            style={{ background: "rgba(255,255,255,0.03)" }}
+            onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
+        ) : (
+          <div className="w-[32px] h-[32px] shrink-0 rounded-[3px]"
+               style={{ background: "rgba(255,255,255,0.03)" }} />
+        )}
+
         {/* Chevron */}
         <span className="text-[10px] shrink-0 transition-transform duration-150"
               style={{ color: "#3a4050", transform: expanded ? "rotate(90deg)" : "rotate(0deg)" }}>
@@ -246,18 +259,31 @@ function SetCard({ set, wanted, complete, ownedCount, pct, ownedSet, onToggleWan
       {/* Component list */}
       {expanded && (
         <div className="px-3 pb-3 flex flex-col gap-[4px]" style={{ borderTop: "1px solid #1c1f27" }}>
-          {set.components.map(comp => {
-            const owned = ownedSet.has(comp);
-            // Strip set name prefix for display
-            const label = comp.startsWith(set.name + " ")
-              ? comp.slice(set.name.length + 1)
-              : comp;
+          {set.components.map((comp: PrimeComponent) => {
+            const owned = ownedSet.has(comp.name);
+            const label = comp.name.startsWith(set.name + " ")
+              ? comp.name.slice(set.name.length + 1)
+              : comp.name;
             return (
-              <label
-                key={comp}
+              <div
+                key={comp.name}
                 className="flex items-center gap-2.5 mt-2 cursor-pointer group"
-                onClick={() => onToggleOwned(comp)}
+                onClick={() => onToggleOwned(comp.name)}
               >
+                {/* Component image */}
+                {comp.image_url ? (
+                  <img
+                    src={comp.image_url}
+                    alt=""
+                    className="w-[28px] h-[28px] shrink-0 rounded-[3px] object-contain"
+                    style={{ background: "rgba(255,255,255,0.03)", opacity: owned ? 0.5 : 1 }}
+                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                  />
+                ) : (
+                  <div className="w-[28px] h-[28px] shrink-0" />
+                )}
+
+                {/* Checkbox */}
                 <span
                   className="w-[14px] h-[14px] rounded-[3px] shrink-0 flex items-center justify-center transition-colors"
                   style={{
@@ -271,13 +297,15 @@ function SetCard({ set, wanted, complete, ownedCount, pct, ownedSet, onToggleWan
                     </svg>
                   )}
                 </span>
+
+                {/* Label */}
                 <span
                   className="text-[12px] transition-colors"
                   style={{ color: owned ? "#52c27a" : "#5a6070", textDecoration: owned ? "line-through" : undefined }}
                 >
                   {label}
                 </span>
-              </label>
+              </div>
             );
           })}
         </div>

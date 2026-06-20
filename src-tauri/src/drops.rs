@@ -15,6 +15,8 @@ struct WfStatComponent {
     unique_name: String,
     #[serde(default)]
     ducats: u32,
+    #[serde(rename = "imageName", default)]
+    image_name: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -26,18 +28,28 @@ struct WfStatItem {
     ducats: u32,
     #[serde(default)]
     components: Vec<WfStatComponent>,
+    #[serde(rename = "imageName", default)]
+    image_name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ItemInfo {
     pub name: String,
     pub ducats: u32,
+    pub image_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PrimeComponent {
+    pub name: String,
+    pub image_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PrimeSetInfo {
     pub name: String,
-    pub components: Vec<String>,
+    pub image_url: Option<String>,
+    pub components: Vec<PrimeComponent>,
 }
 
 #[derive(Clone)]
@@ -60,12 +72,13 @@ impl DropDatabase {
         *self.lang.write().await = lang.to_string();
 
         let url = format!(
-            "https://api.warframestat.us/items?only=name,uniqueName,ducats,components&language={lang}"
+            "https://api.warframestat.us/items?only=name,uniqueName,ducats,imageName,components&language={lang}"
         );
+        // v2: added imageName — old caches without it are intentionally invalidated
         let cache_path = if lang == "en" {
-            cache_dir.join("wfstat_items.json")
+            cache_dir.join("wfstat_items_v2.json")
         } else {
-            cache_dir.join(format!("wfstat_items_{lang}.json"))
+            cache_dir.join(format!("wfstat_items_{lang}_v2.json"))
         };
 
         let client = reqwest::Client::builder()
@@ -91,13 +104,15 @@ impl DropDatabase {
         by_name.clear();
 
         for item in items {
-            let info = ItemInfo { name: item.name.clone(), ducats: item.ducats };
+            let item_img = cdn_url(&item.image_name);
+            let info = ItemInfo { name: item.name.clone(), ducats: item.ducats, image_url: item_img.clone() };
             by_unique.insert(item.unique_name.to_lowercase(), info.clone());
             by_name.insert(item.name.to_lowercase(), info);
 
             for comp in &item.components {
                 let full_name = format!("{} {}", item.name, comp.name);
-                let comp_info = ItemInfo { name: full_name.clone(), ducats: comp.ducats };
+                let comp_img = if comp.image_name.is_empty() { item_img.clone() } else { cdn_url(&comp.image_name) };
+                let comp_info = ItemInfo { name: full_name.clone(), ducats: comp.ducats, image_url: comp_img };
                 by_unique.insert(comp.unique_name.to_lowercase(), comp_info.clone());
                 by_name.insert(full_name.to_lowercase(), comp_info);
             }
@@ -223,30 +238,51 @@ impl DropDatabase {
         self.ocr_match(name).await
     }
 
-    /// Group all Prime items in the DB by their set name ("X Prime").
-    /// Items with " prime" in the name (e.g. "Ash Prime Neuroptics Blueprint")
-    /// are grouped under "Ash Prime". Sorted alphabetically.
+    /// Group all relic-obtainable Prime items by set name ("X Prime").
+    /// Only components with ducats > 0 are included — this filters out glyphs,
+    /// sigils, decorations, and other cosmetics that cannot drop from relics.
     pub async fn prime_sets(&self) -> Vec<PrimeSetInfo> {
         use std::collections::BTreeMap;
         let by_name = self.by_name.read().await;
-        // set_name (proper case) -> component full names
-        let mut sets: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        // set_name → (set_image_url, components)
+        let mut sets: BTreeMap<String, (Option<String>, Vec<PrimeComponent>)> = BTreeMap::new();
 
         for info in by_name.values() {
             let lower = info.name.to_lowercase();
             if let Some(idx) = lower.find(" prime") {
-                // ASCII-safe: byte index matches in original string
                 let set_name = info.name[..idx + " prime".len()].to_string();
-                sets.entry(set_name).or_default().push(info.name.clone());
+                let entry = sets.entry(set_name.clone()).or_insert((None, Vec::new()));
+
+                if set_name == info.name {
+                    // This is the parent set item — grab its image, don't add as component
+                    if entry.0.is_none() {
+                        entry.0 = info.image_url.clone();
+                    }
+                } else if info.ducats > 0 {
+                    // Relic-obtainable component (ducats == 0 → glyph / decoration / consumable)
+                    entry.1.push(PrimeComponent {
+                        name: info.name.clone(),
+                        image_url: info.image_url.clone(),
+                    });
+                }
             }
         }
 
         sets.into_iter()
-            .map(|(name, mut components)| {
-                components.sort();
-                PrimeSetInfo { name, components }
+            .filter(|(_, (_, comps))| !comps.is_empty())
+            .map(|(name, (image_url, mut components))| {
+                components.sort_by(|a, b| a.name.cmp(&b.name));
+                PrimeSetInfo { name, image_url, components }
             })
             .collect()
+    }
+}
+
+fn cdn_url(image_name: &str) -> Option<String> {
+    if image_name.is_empty() {
+        None
+    } else {
+        Some(format!("https://cdn.warframestat.us/img/{image_name}"))
     }
 }
 
@@ -361,7 +397,7 @@ mod tests {
             let mut by_name   = db.by_name.write().await;
             let mut by_unique = db.by_unique.write().await;
             for &(name, ducats) in items {
-                let info = ItemInfo { name: name.to_string(), ducats };
+                let info = ItemInfo { name: name.to_string(), ducats, image_url: None };
                 by_name.insert(name.to_lowercase(), info.clone());
                 by_unique.insert(name.to_lowercase(), info);
             }

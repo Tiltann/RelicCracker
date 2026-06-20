@@ -218,7 +218,8 @@ pub async fn do_trigger_overlay(
                 .into_iter()
                 .filter(|ps| wanted_set.contains(ps.name.as_str()))
                 .flat_map(|ps| ps.components.into_iter())
-                .filter(|comp| !owned_set.contains(comp.as_str()))
+                .filter(|comp| !owned_set.contains(comp.name.as_str()))
+                .map(|comp| comp.name)
                 .collect()
         }
     };

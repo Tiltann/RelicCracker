@@ -25,9 +25,15 @@ export interface LogEntry {
   msg: string;
 }
 
+export interface PrimeComponent {
+  name: string;
+  image_url: string | null;
+}
+
 export interface PrimeSetInfo {
   name: string;
-  components: string[];
+  image_url: string | null;
+  components: PrimeComponent[];
 }
 
 export interface CompletionData {

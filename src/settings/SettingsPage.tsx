@@ -198,6 +198,7 @@ export function SettingsPage() {
   const [eeLogPath, setEeLogPath]                   = useState<string>("");
   const [eeLogEnabled, setEeLogEnabled]             = useState(true);
   const [completionsEnabled, setCompletionsEnabled] = useState(false);
+  const [pickPreference, setPickPreference]         = useState<Settings["pick_preference"]>("plat");
   const [saveState, setSaveState]                   = useState<SaveState>("idle");
   const [testing, setTesting]             = useState(false);
   const [ocrLines, setOcrLines]           = useState<string[] | null>(null);
@@ -216,6 +217,7 @@ export function SettingsPage() {
       setEeLogPath(s.ee_log_path ?? "");
       setEeLogEnabled(s.ee_log_enabled ?? true);
       setCompletionsEnabled(s.completions_enabled ?? false);
+      setPickPreference(s.pick_preference ?? "plat");
     });
   }, []);
 
@@ -257,6 +259,7 @@ export function SettingsPage() {
       ee_log_path: eeLogPath.trim() || null,
       ee_log_enabled: eeLogEnabled,
       completions_enabled: completionsEnabled,
+      pick_preference: pickPreference,
     };
 
     try {
@@ -580,6 +583,59 @@ export function SettingsPage() {
                 <MarketLookup />
               </div>
             </>
+          )}
+        </section>
+
+        {/* ── Best Pick Preference ── */}
+        <section className="flex flex-col gap-3">
+          <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.1em] pb-2" style={{ color: "#3a4050", borderBottom: "1px solid #1c1f27" }}>
+            Best Pick Preference
+          </h2>
+          <p className="text-[13px] text-wf-muted">
+            Determines which reward is highlighted as best on the overlay and why.
+          </p>
+          <div className="flex flex-col gap-2">
+            {(
+              [
+                { value: "plat",           label: "Max Platinum",     desc: "Highlights the reward worth the most plat on warframe.market." },
+                { value: "ducats",         label: "Max Ducats",       desc: "Highlights the reward with the highest ducat sell value (best for Baro farming)." },
+                { value: "set_completion", label: "Set Completion",   desc: "Highlights a reward you still need for your tracked Prime sets. Falls back to plat when nothing is needed." },
+              ] as { value: Settings["pick_preference"]; label: string; desc: string }[]
+            ).map(opt => (
+              <label
+                key={opt.value}
+                className="flex items-start gap-3 cursor-pointer group max-w-[480px] px-3 py-2.5 rounded-[6px] transition-colors"
+                style={{
+                  background: pickPreference === opt.value ? "rgba(196,154,60,0.06)" : "rgba(255,255,255,0.02)",
+                  border: `1px solid ${pickPreference === opt.value ? "rgba(196,154,60,0.3)" : "#1c1f27"}`,
+                }}
+                onClick={() => setPickPreference(opt.value)}
+              >
+                <span
+                  className="w-[14px] h-[14px] rounded-full shrink-0 mt-[1px] flex items-center justify-center transition-colors"
+                  style={{
+                    border: `2px solid ${pickPreference === opt.value ? "#c49a3c" : "#3a4050"}`,
+                    background: pickPreference === opt.value ? "#c49a3c" : "transparent",
+                  }}
+                >
+                  {pickPreference === opt.value && (
+                    <span className="w-[5px] h-[5px] rounded-full bg-[#0a0c10]" />
+                  )}
+                </span>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[13px]" style={{ color: pickPreference === opt.value ? "#d4c4a0" : "#7a8090" }}>
+                    {opt.label}
+                  </span>
+                  <span className="text-[11px]" style={{ color: "#3a4050" }}>{opt.desc}</span>
+                </div>
+              </label>
+            ))}
+          </div>
+          {pickPreference === "set_completion" && !completionsEnabled && (
+            <p className="text-[11px] px-3 py-2 rounded-[5px]"
+               style={{ color: "#c49a3c", background: "rgba(196,154,60,0.06)", border: "1px solid rgba(196,154,60,0.2)" }}>
+              Enable the Completions tab below and mark sets as Wanted for this to work.
+            </p>
           )}
         </section>
 

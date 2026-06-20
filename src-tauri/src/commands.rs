@@ -22,6 +22,7 @@ pub struct RewardResult {
     pub ducats: u32,
     pub vaulted: bool,
     pub is_best: bool,
+    pub best_reason: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,11 +60,14 @@ pub struct Settings {
     pub ee_log_enabled: bool,
     #[serde(default)]
     pub completions_enabled: bool,
+    #[serde(default = "default_pick_preference")]
+    pub pick_preference: String,
 }
 
 fn default_poll_interval() -> u32 { 2 }
 fn default_game_language() -> String { "en".to_string() }
 fn default_true() -> bool { true }
+fn default_pick_preference() -> String { "plat".to_string() }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -78,6 +82,7 @@ impl Default for Settings {
             ee_log_path: None,
             ee_log_enabled: true,
             completions_enabled: false,
+            pick_preference: "plat".to_string(),
         }
     }
 }
@@ -115,6 +120,15 @@ pub async fn do_trigger_overlay(
         }
         *last = Some(now);
     }
+
+    // Read settings once up front so we have dismiss_hotkey, preference, etc.
+    let settings: Settings = {
+        let p = crate::app_data_dir_from_handle(app).join("settings.json");
+        std::fs::read_to_string(&p)
+            .ok()
+            .and_then(|d| serde_json::from_str::<Settings>(&d).ok())
+            .unwrap_or_default()
+    };
 
     crate::app_log::info(app, format!("Overlay triggered ({source}): {}", items.join(", ")));
 
@@ -155,29 +169,46 @@ pub async fn do_trigger_overlay(
         }
     }
 
-    let best_idx = reward_data
-        .iter()
-        .enumerate()
-        .max_by_key(|(_, r)| {
-            let plat = r.median_plat.unwrap_or(0) as f64 * 10.0;
-            let vaulted_bonus = if r.vaulted { 50.0 } else { 0.0 };
-            let ducat_bonus = r.ducats as f64 * 0.5;
-            (plat + vaulted_bonus + ducat_bonus) as i64
-        })
-        .map(|(i, _)| i);
+    // Compute needed items before best_idx so set_completion preference can use them.
+    let needed_items: Vec<String> = {
+        let wanted = state.storage.get_wanted_sets().unwrap_or_default();
+        if wanted.is_empty() {
+            Vec::new()
+        } else {
+            let owned = state.storage.get_owned_components().unwrap_or_default();
+            let owned_set: std::collections::HashSet<&str> =
+                owned.iter().map(|s| s.as_str()).collect();
+            let prime_sets = state.drops.prime_sets().await;
+            let wanted_set: std::collections::HashSet<&str> =
+                wanted.iter().map(|s| s.as_str()).collect();
+            prime_sets
+                .into_iter()
+                .filter(|ps| wanted_set.contains(ps.name.as_str()))
+                .flat_map(|ps| ps.components.into_iter())
+                .filter(|comp| !owned_set.contains(comp.name.as_str()))
+                .map(|comp| comp.name)
+                .collect()
+        }
+    };
+
+    let (best_idx, best_reason) = pick_best(&reward_data, &settings.pick_preference, &needed_items);
 
     let results: Vec<RewardResult> = reward_data
         .into_iter()
         .enumerate()
-        .map(|(i, data)| RewardResult {
-            item_name: data.item_name,
-            url_name: data.url_name,
-            rarity: String::new(),
-            median_plat: data.median_plat,
-            trend: data.trend,
-            ducats: data.ducats,
-            vaulted: data.vaulted,
-            is_best: Some(i) == best_idx,
+        .map(|(i, data)| {
+            let is_best = Some(i) == best_idx;
+            RewardResult {
+                item_name: data.item_name,
+                url_name: data.url_name,
+                rarity: String::new(),
+                median_plat: data.median_plat,
+                trend: data.trend,
+                ducats: data.ducats,
+                vaulted: data.vaulted,
+                is_best,
+                best_reason: if is_best { best_reason.clone() } else { String::new() },
+            }
         })
         .collect();
 
@@ -202,44 +233,84 @@ pub async fn do_trigger_overlay(
         Err(e) => log::error!("Failed to record session: {}", e),
     }
 
-    // Compute which items from this reward set are needed for wanted prime sets
-    let needed_items: Vec<String> = {
-        let wanted = state.storage.get_wanted_sets().unwrap_or_default();
-        if wanted.is_empty() {
-            Vec::new()
-        } else {
-            let owned = state.storage.get_owned_components().unwrap_or_default();
-            let owned_set: std::collections::HashSet<&str> =
-                owned.iter().map(|s| s.as_str()).collect();
-            let prime_sets = state.drops.prime_sets().await;
-            let wanted_set: std::collections::HashSet<&str> =
-                wanted.iter().map(|s| s.as_str()).collect();
-            prime_sets
-                .into_iter()
-                .filter(|ps| wanted_set.contains(ps.name.as_str()))
-                .flat_map(|ps| ps.components.into_iter())
-                .filter(|comp| !owned_set.contains(comp.name.as_str()))
-                .map(|comp| comp.name)
-                .collect()
-        }
-    };
-
     crate::overlay::show(app, results.len())?;
 
-    let (dismiss_hotkey, auto_dismiss_secs) = {
-        let p = crate::app_data_dir_from_handle(app).join("settings.json");
-        std::fs::read_to_string(&p)
-            .ok()
-            .and_then(|d| serde_json::from_str::<Settings>(&d).ok())
-            .map(|s| (s.dismiss_hotkey, s.auto_dismiss_secs))
-            .unwrap_or_else(|| ("F10".into(), 15))
+    let payload = OverlayPayload {
+        rewards: results,
+        source,
+        dismiss_hotkey: settings.dismiss_hotkey,
+        auto_dismiss_secs: settings.auto_dismiss_secs,
+        needed_items,
     };
-    let payload = OverlayPayload { rewards: results, source, dismiss_hotkey, auto_dismiss_secs, needed_items };
     if let Some(overlay_win) = app.get_webview_window("overlay") {
         overlay_win.emit("overlay-data", &payload)?;
     }
 
     Ok(())
+}
+
+fn pick_best(
+    reward_data: &[RewardData],
+    preference: &str,
+    needed_items: &[String],
+) -> (Option<usize>, String) {
+    if reward_data.is_empty() {
+        return (None, String::new());
+    }
+
+    match preference {
+        "ducats" => {
+            let (idx, data) = reward_data.iter().enumerate()
+                .max_by_key(|(_, r)| r.ducats)
+                .unwrap();
+            let reason = format!("Most ducats ({} \u{25c8})", data.ducats);
+            (Some(idx), reason)
+        }
+        "set_completion" => {
+            let needed_set: std::collections::HashSet<&str> =
+                needed_items.iter().map(|s| s.as_str()).collect();
+
+            let best_needed = reward_data.iter().enumerate()
+                .filter(|(_, r)| needed_set.contains(r.item_name.as_str()))
+                .max_by_key(|(_, r)| r.median_plat.unwrap_or(0));
+
+            if let Some((idx, data)) = best_needed {
+                let reason = if let Some(plat) = data.median_plat {
+                    format!("Needed for collection ({}p)", plat)
+                } else {
+                    "Needed for collection".to_string()
+                };
+                (Some(idx), reason)
+            } else {
+                pick_best_by_plat(reward_data)
+            }
+        }
+        _ => pick_best_by_plat(reward_data),
+    }
+}
+
+fn pick_best_by_plat(reward_data: &[RewardData]) -> (Option<usize>, String) {
+    let (idx, data) = reward_data.iter().enumerate()
+        .max_by_key(|(_, r)| {
+            let plat = r.median_plat.unwrap_or(0) as f64 * 10.0;
+            let vaulted_bonus = if r.vaulted { 50.0 } else { 0.0 };
+            let ducat_bonus = r.ducats as f64 * 0.5;
+            (plat + vaulted_bonus + ducat_bonus) as i64
+        })
+        .unwrap();
+
+    let reason = if let Some(plat) = data.median_plat {
+        let trend = match data.trend {
+            crate::market::PriceTrend::Up => " \u{2191}",
+            crate::market::PriceTrend::Down => " \u{2193}",
+            crate::market::PriceTrend::Flat => "",
+        };
+        format!("Highest plat ({}p{})", plat, trend)
+    } else {
+        "Highest value".to_string()
+    };
+
+    (Some(idx), reason)
 }
 
 #[tauri::command]
@@ -435,8 +506,17 @@ pub async fn restart_watcher(
 }
 
 #[tauri::command]
-pub async fn get_watcher_status(_app: AppHandle) -> String {
-    "Active — screen monitor running (2s OCR poll while Warframe is open)".to_string()
+pub async fn get_watcher_status(state: State<'_, AppState>) -> String {
+    let wf_running = crate::screen_watcher::warframe_is_running();
+    let interval = state.poll_interval_secs.load(Ordering::Relaxed);
+
+    if !wf_running {
+        "Paused — Warframe not running".to_string()
+    } else if interval == 0 {
+        "Active — manual scan only (auto-scan off)".to_string()
+    } else {
+        format!("Active — scanning every {}s", interval)
+    }
 }
 
 #[tauri::command]
@@ -449,13 +529,6 @@ pub async fn test_overlay(state: State<'_, AppState>, app: AppHandle) -> Result<
     ];
 
     do_trigger_overlay(items, "test".into(), &state, &app)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn get_inventory(state: State<'_, AppState>) -> Result<Vec<crate::inventory::InventoryEntry>, String> {
-    crate::inventory::fetch(&state.drops)
         .await
         .map_err(|e| e.to_string())
 }

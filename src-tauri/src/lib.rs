@@ -2,7 +2,6 @@ pub mod app_log;
 pub mod commands;
 pub mod drops;
 pub mod hotkeys;
-pub mod inventory;
 pub mod log_watcher;
 pub mod market;
 pub mod ocr;
@@ -116,7 +115,6 @@ pub fn run() {
             commands::restart_watcher,
             commands::get_watcher_status,
             commands::test_overlay,
-            commands::get_inventory,
             commands::debug_ocr,
             commands::get_warframe_status,
             commands::set_ocr_threshold,

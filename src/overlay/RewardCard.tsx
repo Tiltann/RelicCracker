@@ -78,6 +78,13 @@ export function RewardCard({ reward, index, needed }: Props) {
           {reward.item_name}
         </div>
 
+        {/* Best reason */}
+        {reward.is_best && reward.best_reason && (
+          <div className="text-[8.5px] leading-none" style={{ color: r.color + "bb" }}>
+            {reward.best_reason}
+          </div>
+        )}
+
         {/* Price + ducats row */}
         <div className="flex items-center gap-[8px] flex-wrap">
           {/* Platinum price */}

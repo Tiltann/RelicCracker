@@ -9,6 +9,7 @@ export interface RewardResult {
   ducats: number;
   vaulted: boolean;
   is_best: boolean;
+  best_reason: string;
 }
 
 export interface OverlayPayload {
@@ -28,6 +29,7 @@ export interface LogEntry {
 export interface PrimeComponent {
   name: string;
   image_url: string | null;
+  ducats: number;
 }
 
 export interface PrimeSetInfo {
@@ -61,15 +63,7 @@ export interface Settings {
   ee_log_path: string | null;
   ee_log_enabled: boolean;
   completions_enabled: boolean;
-}
-
-export interface InventoryEntry {
-  name: string;
-  item_type: string;
-  count: number;
-  ducats: number;
-  category: string; // "Warframe Part" | "Weapon Part" | "Blueprint" | "Other"
-  image_url: string | null;
+  pick_preference: "plat" | "ducats" | "set_completion";
 }
 
 export interface FileScanResult {

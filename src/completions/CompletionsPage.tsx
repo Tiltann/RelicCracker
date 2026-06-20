@@ -1,8 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { CompletionData, PrimeComponent, PrimeSetInfo } from "../types";
+import type { CompletionData, ItemLookupResult, PrimeComponent, PrimeSetInfo } from "../types";
+import platIcon from "../assets/plat.png";
+import ducatIcon from "../assets/ducat.png";
 
 type Filter = "all" | "wanted" | "complete";
+
+interface ComponentPrices {
+  [name: string]: { median_plat: number | null; trend: "Up" | "Down" | "Flat" } | null;
+}
 
 export function CompletionsPage() {
   const [data, setData]       = useState<CompletionData | null>(null);
@@ -177,7 +183,31 @@ interface SetCardProps {
 }
 
 function SetCard({ set, wanted, complete, ownedCount, pct, ownedSet, onToggleWanted, onToggleOwned }: SetCardProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded]       = useState(false);
+  const [prices, setPrices]           = useState<ComponentPrices>({});
+  const [pricesLoading, setPricesLoading] = useState(false);
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (!expanded || fetchedRef.current) return;
+    fetchedRef.current = true;
+    setPricesLoading(true);
+
+    Promise.all(
+      set.components.map(async comp => {
+        try {
+          const r = await invoke<ItemLookupResult>("lookup_item", { name: comp.name });
+          return { name: comp.name, median_plat: r.median_plat, trend: r.trend };
+        } catch {
+          return { name: comp.name, median_plat: null, trend: "Flat" as const };
+        }
+      })
+    ).then(results => {
+      const map: ComponentPrices = {};
+      for (const r of results) map[r.name] = { median_plat: r.median_plat, trend: r.trend };
+      setPrices(map);
+    }).finally(() => setPricesLoading(false));
+  }, [expanded, set.components]);
 
   return (
     <div
@@ -259,24 +289,38 @@ function SetCard({ set, wanted, complete, ownedCount, pct, ownedSet, onToggleWan
       {/* Component list */}
       {expanded && (
         <div className="px-3 pb-3 flex flex-col gap-[4px]" style={{ borderTop: "1px solid #1c1f27" }}>
+          {/* Column header */}
+          <div className="flex items-center gap-2.5 mt-2 mb-1 pl-[44px]">
+            <span className="flex-1 text-[9px] uppercase tracking-[0.1em]" style={{ color: "#2a3040" }}>Component</span>
+            <span className="text-[9px] uppercase tracking-[0.1em] w-[52px] text-right" style={{ color: "#2a3040" }}>Plat</span>
+            <span className="text-[9px] uppercase tracking-[0.1em] w-[44px] text-right" style={{ color: "#2a3040" }}>Ducats</span>
+          </div>
+
           {set.components.map((comp: PrimeComponent) => {
             const owned = ownedSet.has(comp.name);
             const label = comp.name.startsWith(set.name + " ")
               ? comp.name.slice(set.name.length + 1)
               : comp.name;
+
+            // Blueprints get the set image; other components use their own
+            const isBlueprint = comp.name.toLowerCase().endsWith("blueprint");
+            const imgSrc = isBlueprint ? set.image_url : (comp.image_url ?? set.image_url);
+
+            const price = prices[comp.name];
+
             return (
               <div
                 key={comp.name}
-                className="flex items-center gap-2.5 mt-2 cursor-pointer group"
+                className="flex items-center gap-2.5 mt-1 cursor-pointer group"
                 onClick={() => onToggleOwned(comp.name)}
               >
                 {/* Component image */}
-                {comp.image_url ? (
+                {imgSrc ? (
                   <img
-                    src={comp.image_url}
+                    src={imgSrc}
                     alt=""
                     className="w-[28px] h-[28px] shrink-0 rounded-[3px] object-contain"
-                    style={{ background: "rgba(255,255,255,0.03)", opacity: owned ? 0.5 : 1 }}
+                    style={{ background: "rgba(255,255,255,0.03)", opacity: owned ? 0.4 : 1 }}
                     onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
                   />
                 ) : (
@@ -300,11 +344,49 @@ function SetCard({ set, wanted, complete, ownedCount, pct, ownedSet, onToggleWan
 
                 {/* Label */}
                 <span
-                  className="text-[12px] transition-colors"
+                  className="flex-1 text-[12px] transition-colors min-w-0 truncate"
                   style={{ color: owned ? "#52c27a" : "#5a6070", textDecoration: owned ? "line-through" : undefined }}
                 >
                   {label}
                 </span>
+
+                {/* Plat price */}
+                <div className="w-[52px] flex items-center justify-end gap-[3px] shrink-0">
+                  {pricesLoading && !price ? (
+                    <span className="text-[10px]" style={{ color: "#2a3040" }}>…</span>
+                  ) : price?.median_plat != null ? (
+                    <>
+                      <img src={platIcon} alt="" className="w-[10px] h-[10px] shrink-0" style={{ opacity: owned ? 0.4 : 0.7 }} />
+                      <span className="text-[11px] tabular-nums font-semibold"
+                            style={{ color: owned ? "#3a4050" : "#9a9aa0" }}>
+                        {price.median_plat}
+                      </span>
+                      {!owned && price.trend === "Up" && (
+                        <span className="text-[9px] font-bold leading-none" style={{ color: "#52c27a" }}>↑</span>
+                      )}
+                      {!owned && price.trend === "Down" && (
+                        <span className="text-[9px] font-bold leading-none" style={{ color: "#e05252" }}>↓</span>
+                      )}
+                    </>
+                  ) : price ? (
+                    <span className="text-[10px]" style={{ color: "#2a3040" }}>n/a</span>
+                  ) : null}
+                </div>
+
+                {/* Ducats */}
+                <div className="w-[44px] flex items-center justify-end gap-[3px] shrink-0">
+                  {comp.ducats > 0 ? (
+                    <>
+                      <img src={ducatIcon} alt="" className="w-[10px] h-[10px] shrink-0" style={{ opacity: owned ? 0.4 : 0.7 }} />
+                      <span className="text-[11px] tabular-nums font-semibold"
+                            style={{ color: owned ? "#3a4050" : "#d4953a" }}>
+                        {comp.ducats}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-[10px]" style={{ color: "#2a3040" }}>—</span>
+                  )}
+                </div>
               </div>
             );
           })}

@@ -43,6 +43,7 @@ pub struct ItemInfo {
 pub struct PrimeComponent {
     pub name: String,
     pub image_url: Option<String>,
+    pub ducats: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -263,6 +264,7 @@ impl DropDatabase {
                     entry.1.push(PrimeComponent {
                         name: info.name.clone(),
                         image_url: info.image_url.clone(),
+                        ducats: info.ducats,
                     });
                 }
             }

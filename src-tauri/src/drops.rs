@@ -17,7 +17,11 @@ struct WfStatComponent {
     ducats: u32,
     #[serde(rename = "imageName", default)]
     image_name: String,
+    #[serde(rename = "itemCount", default = "one")]
+    item_count: u32,
 }
+
+fn one() -> u32 { 1 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct WfStatItem {
@@ -37,6 +41,8 @@ pub struct ItemInfo {
     pub name: String,
     pub ducats: u32,
     pub image_url: Option<String>,
+    #[serde(default = "one")]
+    pub item_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -44,6 +50,7 @@ pub struct PrimeComponent {
     pub name: String,
     pub image_url: Option<String>,
     pub ducats: u32,
+    pub item_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -73,13 +80,13 @@ impl DropDatabase {
         *self.lang.write().await = lang.to_string();
 
         let url = format!(
-            "https://api.warframestat.us/items?only=name,uniqueName,ducats,imageName,components&language={lang}"
+            "https://api.warframestat.us/items?only=name,uniqueName,ducats,imageName,components,itemCount&language={lang}"
         );
-        // v2: added imageName — old caches without it are intentionally invalidated
+        // v3: added itemCount old caches without it are intentionally invalidated
         let cache_path = if lang == "en" {
-            cache_dir.join("wfstat_items_v2.json")
+            cache_dir.join("wfstat_items_v3.json")
         } else {
-            cache_dir.join(format!("wfstat_items_{lang}_v2.json"))
+            cache_dir.join(format!("wfstat_items_{lang}_v3.json"))
         };
 
         let client = reqwest::Client::builder()
@@ -87,39 +94,57 @@ impl DropDatabase {
             .timeout(Duration::from_secs(15))
             .build()?;
 
-        let items: Vec<WfStatItem> = if let Some(cached) = load_cache::<Vec<WfStatItem>>(&cache_path) {
-            log::info!("Loaded drop items from cache (lang={lang})");
-            cached
-        } else {
-            log::info!("Fetching drop items from warframestat.us (lang={lang})...");
-            let resp = client.get(&url).send().await?.json().await?;
-            if let Ok(json) = serde_json::to_string(&resp) {
-                let _ = std::fs::write(&cache_path, json);
-            }
-            resp
-        };
+        let items: Vec<WfStatItem> =
+            if let Some(cached) = load_cache::<Vec<WfStatItem>>(&cache_path) {
+                log::info!("Loaded drop items from cache (lang={lang})");
+                cached
+            } else {
+                log::info!("Fetching drop items from warframestat.us (lang={lang})...");
+                let resp = client.get(&url).send().await?.json().await?;
+                if let Ok(json) = serde_json::to_string(&resp) {
+                    let _ = std::fs::write(&cache_path, json);
+                }
+                resp
+            };
 
         let mut by_unique = self.by_unique.write().await;
-        let mut by_name   = self.by_name.write().await;
+        let mut by_name = self.by_name.write().await;
         by_unique.clear();
         by_name.clear();
 
         for item in items {
             let item_img = cdn_url(&item.image_name);
-            let info = ItemInfo { name: item.name.clone(), ducats: item.ducats, image_url: item_img.clone() };
+            let info = ItemInfo {
+                name: item.name.clone(),
+                ducats: item.ducats,
+                image_url: item_img.clone(),
+                item_count: 1,
+            };
             by_unique.insert(item.unique_name.to_lowercase(), info.clone());
             by_name.insert(item.name.to_lowercase(), info);
 
             for comp in &item.components {
                 let full_name = format!("{} {}", item.name, comp.name);
-                let comp_img = if comp.image_name.is_empty() { item_img.clone() } else { cdn_url(&comp.image_name) };
-                let comp_info = ItemInfo { name: full_name.clone(), ducats: comp.ducats, image_url: comp_img };
+                let comp_img = if comp.image_name.is_empty() {
+                    item_img.clone()
+                } else {
+                    cdn_url(&comp.image_name)
+                };
+                let comp_info = ItemInfo {
+                    name: full_name.clone(),
+                    ducats: comp.ducats,
+                    image_url: comp_img,
+                    item_count: comp.item_count,
+                };
                 by_unique.insert(comp.unique_name.to_lowercase(), comp_info.clone());
                 by_name.insert(full_name.to_lowercase(), comp_info);
             }
         }
 
-        log::info!("Drop database: {} entries loaded (lang={lang}, incl. components)", by_name.len());
+        log::info!(
+            "Drop database: {} entries loaded (lang={lang}, incl. components)",
+            by_name.len()
+        );
         Ok(())
     }
 
@@ -183,7 +208,12 @@ impl DropDatabase {
 
         if best_dist <= max_dist {
             if let Some(ref info) = best {
-                log::debug!("OCR levenshtein (d={}): {:?} -> {:?}", best_dist, text, info.name);
+                log::debug!(
+                    "OCR levenshtein (d={}): {:?} -> {:?}",
+                    best_dist,
+                    text,
+                    info.name
+                );
             }
             best
         } else {
@@ -240,7 +270,7 @@ impl DropDatabase {
     }
 
     /// Group all relic-obtainable Prime items by set name ("X Prime").
-    /// Only components with ducats > 0 are included — this filters out glyphs,
+    /// Only components with ducats > 0 are included this filters out glyphs,
     /// sigils, decorations, and other cosmetics that cannot drop from relics.
     pub async fn prime_sets(&self) -> Vec<PrimeSetInfo> {
         use std::collections::BTreeMap;
@@ -255,7 +285,7 @@ impl DropDatabase {
                 let entry = sets.entry(set_name.clone()).or_insert((None, Vec::new()));
 
                 if set_name == info.name {
-                    // This is the parent set item — grab its image, don't add as component
+                    // This is the parent set item grab its image, don't add as component
                     if entry.0.is_none() {
                         entry.0 = info.image_url.clone();
                     }
@@ -265,6 +295,7 @@ impl DropDatabase {
                         name: info.name.clone(),
                         image_url: info.image_url.clone(),
                         ducats: info.ducats,
+                        item_count: info.item_count,
                     });
                 }
             }
@@ -274,7 +305,11 @@ impl DropDatabase {
             .filter(|(_, (_, comps))| !comps.is_empty())
             .map(|(name, (image_url, mut components))| {
                 components.sort_by(|a, b| a.name.cmp(&b.name));
-                PrimeSetInfo { name, image_url, components }
+                PrimeSetInfo {
+                    name,
+                    image_url,
+                    components,
+                }
             })
             .collect()
     }
@@ -329,8 +364,12 @@ fn has_relic_keyword(s: &str, lang: &str) -> bool {
 fn is_relic_reward_line(s: &str, lang: &str) -> bool {
     // Must be at least two words and a reasonable length
     let word_count = s.split_whitespace().count();
-    if word_count < 2 || word_count > 7 { return false; }
-    if s.len() < 7 || s.len() > 55 { return false; }
+    if word_count < 2 || word_count > 7 {
+        return false;
+    }
+    if s.len() < 7 || s.len() > 55 {
+        return false;
+    }
     has_relic_keyword(s, lang)
 }
 
@@ -342,20 +381,27 @@ fn strip_qty_prefix(s: &str) -> &str {
     }
     if i > 0 {
         let rest = &s[i..];
-        if let Some(item) = rest.strip_prefix(" X ").or_else(|| rest.strip_prefix(" x ")) {
+        if let Some(item) = rest
+            .strip_prefix(" X ")
+            .or_else(|| rest.strip_prefix(" x "))
+        {
             return item.trim();
         }
     }
     s
 }
 
-/// Levenshtein edit distance (O(m·n) time, O(n) space — rolling two-row DP).
+/// Levenshtein edit distance (O(m·n) time, O(n) space rolling two-row DP).
 fn edit_distance(a: &str, b: &str) -> usize {
     let a: Vec<char> = a.chars().collect();
     let b: Vec<char> = b.chars().collect();
     let (m, n) = (a.len(), b.len());
-    if m == 0 { return n; }
-    if n == 0 { return m; }
+    if m == 0 {
+        return n;
+    }
+    if n == 0 {
+        return m;
+    }
 
     let mut prev: Vec<usize> = (0..=n).collect();
     let mut curr = vec![0usize; n + 1];
@@ -396,10 +442,15 @@ mod tests {
     async fn make_db(items: &[(&str, u32)]) -> DropDatabase {
         let db = DropDatabase::new();
         {
-            let mut by_name   = db.by_name.write().await;
+            let mut by_name = db.by_name.write().await;
             let mut by_unique = db.by_unique.write().await;
             for &(name, ducats) in items {
-                let info = ItemInfo { name: name.to_string(), ducats, image_url: None };
+                let info = ItemInfo {
+                    name: name.to_string(),
+                    ducats,
+                    image_url: None,
+                    item_count: 1,
+                };
                 by_name.insert(name.to_lowercase(), info.clone());
                 by_unique.insert(name.to_lowercase(), info);
             }
@@ -408,9 +459,9 @@ mod tests {
     }
 
     const SCREENSHOT_ITEMS: &[(&str, u32)] = &[
-        ("Okina Prime Blade",     45),
-        ("Forma Blueprint",        0),
-        ("Kavasa Prime Buckle",   65),
+        ("Okina Prime Blade", 45),
+        ("Forma Blueprint", 0),
+        ("Kavasa Prime Buckle", 65),
         ("Velox Prime Blueprint", 15),
     ];
 
@@ -423,15 +474,15 @@ mod tests {
 
     #[test]
     fn normalize_strips_qty_prefix() {
-        assert_eq!(normalize_ocr("2 X Forma Blueprint"),  "forma blueprint");
+        assert_eq!(normalize_ocr("2 X Forma Blueprint"), "forma blueprint");
         assert_eq!(normalize_ocr("10 X Forma Blueprint"), "forma blueprint");
     }
 
     #[test]
     fn normalize_strips_special_chars() {
-        assert_eq!(normalize_ocr("Gjrud::"),          "gjrud");
-        assert_eq!(normalize_ocr("Ensorrr::"),        "ensorrr");
-        assert_eq!(normalize_ocr("@ Owned"),          "owned");
+        assert_eq!(normalize_ocr("Gjrud::"), "gjrud");
+        assert_eq!(normalize_ocr("Ensorrr::"), "ensorrr");
+        assert_eq!(normalize_ocr("@ Owned"), "owned");
         // Hyphens and underscores become spaces then collapse
         let n = normalize_ocr("SaK-0-_-KaRnAgEO");
         assert!(!n.contains('-'));
@@ -440,7 +491,10 @@ mod tests {
 
     #[test]
     fn normalize_collapses_whitespace() {
-        assert_eq!(normalize_ocr("  Kavasa   Prime   Buckle  "), "kavasa prime buckle");
+        assert_eq!(
+            normalize_ocr("  Kavasa   Prime   Buckle  "),
+            "kavasa prime buckle"
+        );
     }
 
     // ── is_relic_reward_line ──────────────────────────────────────────────────
@@ -470,7 +524,10 @@ mod tests {
         assert!(!is_relic_reward_line("owned", "en"));
         assert!(!is_relic_reward_line("21 crafted", "en"));
         // Too many words
-        assert!(!is_relic_reward_line("endless bonus affinity booster 1 relic opened", "en"));
+        assert!(!is_relic_reward_line(
+            "endless bonus affinity booster 1 relic opened",
+            "en"
+        ));
     }
 
     #[test]
@@ -507,9 +564,9 @@ mod tests {
 
     #[test]
     fn edit_distance_substitution() {
-        // "0kina" vs "okina" — one substitution ('0' → 'o')
+        // "0kina" vs "okina" one substitution ('0' → 'o')
         assert_eq!(edit_distance("0kina", "okina"), 1);
-        // "prirne" vs "prime" — substitute 'r'→'m' AND 'n'→'e' = 2 edits
+        // "prirne" vs "prime" substitute 'r'→'m' AND 'n'→'e' = 2 edits
         assert_eq!(edit_distance("prirne", "prime"), 2);
     }
 
@@ -536,7 +593,8 @@ mod tests {
             assert_eq!(
                 result.as_ref().map(|i| i.name.as_str()),
                 Some(name),
-                "Expected exact match for {:?}", name
+                "Expected exact match for {:?}",
+                name
             );
         }
     }
@@ -551,9 +609,18 @@ mod tests {
     #[tokio::test]
     async fn ocr_match_rejects_player_names() {
         let db = make_db(SCREENSHOT_ITEMS).await;
-        assert!(db.ocr_match("Gjrud::").await.is_none(),          "Gjrud:: should not match");
-        assert!(db.ocr_match("SaK-0-_-KaRnAgEO").await.is_none(), "player name should not match");
-        assert!(db.ocr_match("Ensorrr::").await.is_none(),         "Ensorrr:: should not match");
+        assert!(
+            db.ocr_match("Gjrud::").await.is_none(),
+            "Gjrud:: should not match"
+        );
+        assert!(
+            db.ocr_match("SaK-0-_-KaRnAgEO").await.is_none(),
+            "player name should not match"
+        );
+        assert!(
+            db.ocr_match("Ensorrr::").await.is_none(),
+            "Ensorrr:: should not match"
+        );
     }
 
     #[tokio::test]
@@ -561,7 +628,10 @@ mod tests {
         let db = make_db(SCREENSHOT_ITEMS).await;
         assert!(db.ocr_match("@ Owned").await.is_none());
         assert!(db.ocr_match("21 Crafted").await.is_none());
-        assert!(db.ocr_match("Endless Bonus Affinity Booster | 1 Relic Opened").await.is_none());
+        assert!(db
+            .ocr_match("Endless Bonus Affinity Booster | 1 Relic Opened")
+            .await
+            .is_none());
     }
 
     #[tokio::test]
@@ -569,8 +639,11 @@ mod tests {
         let db = make_db(SCREENSHOT_ITEMS).await;
         // "0kina" → 'O' misread as '0' (1 edit)
         let r = db.ocr_match("0kina Prime Blade").await;
-        assert_eq!(r.map(|i| i.name), Some("Okina Prime Blade".to_string()),
-            "Should correct single OCR substitution");
+        assert_eq!(
+            r.map(|i| i.name),
+            Some("Okina Prime Blade".to_string()),
+            "Should correct single OCR substitution"
+        );
     }
 
     #[tokio::test]
@@ -615,7 +688,7 @@ mod tests {
 
         let (matched, raw) = crate::ocr::scan_image_file(&db, path, 0.0)
             .await
-            .expect("scan_image_file failed — OCR engine error");
+            .expect("scan_image_file failed OCR engine error");
 
         println!("\n=== Raw OCR lines ({}) ===", raw.len());
         for line in &raw {
@@ -626,11 +699,28 @@ mod tests {
             println!("  {item:?}");
         }
 
-        assert_eq!(matched.len(), 4,
-            "Expected 4 items but got {:?}\nRaw lines: {:#?}", matched, raw);
-        assert!(matched.contains(&"Okina Prime Blade".to_string()),    "Missing Okina Prime Blade");
-        assert!(matched.contains(&"Forma Blueprint".to_string()),       "Missing Forma Blueprint");
-        assert!(matched.contains(&"Kavasa Prime Buckle".to_string()),   "Missing Kavasa Prime Buckle");
-        assert!(matched.contains(&"Velox Prime Blueprint".to_string()), "Missing Velox Prime Blueprint");
+        assert_eq!(
+            matched.len(),
+            4,
+            "Expected 4 items but got {:?}\nRaw lines: {:#?}",
+            matched,
+            raw
+        );
+        assert!(
+            matched.contains(&"Okina Prime Blade".to_string()),
+            "Missing Okina Prime Blade"
+        );
+        assert!(
+            matched.contains(&"Forma Blueprint".to_string()),
+            "Missing Forma Blueprint"
+        );
+        assert!(
+            matched.contains(&"Kavasa Prime Buckle".to_string()),
+            "Missing Kavasa Prime Buckle"
+        );
+        assert!(
+            matched.contains(&"Velox Prime Blueprint".to_string()),
+            "Missing Velox Prime Blueprint"
+        );
     }
 }

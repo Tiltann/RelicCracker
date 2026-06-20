@@ -348,6 +348,11 @@ function SetCard({ set, wanted, complete, ownedCount, pct, ownedSet, onToggleWan
                   style={{ color: owned ? "#52c27a" : "#5a6070", textDecoration: owned ? "line-through" : undefined }}
                 >
                   {label}
+                  {comp.item_count > 1 && (
+                    <span className="ml-1 text-[10px] font-semibold" style={{ color: owned ? "#52c27a" : "#c49a3c", opacity: owned ? 0.5 : 1 }}>
+                      ×{comp.item_count}
+                    </span>
+                  )}
                 </span>
 
                 {/* Plat price */}

@@ -36,6 +36,7 @@ export interface PrimeComponent {
   name: string;
   image_url: string | null;
   ducats: number;
+  item_count: number;
 }
 
 export interface PrimeSetInfo {

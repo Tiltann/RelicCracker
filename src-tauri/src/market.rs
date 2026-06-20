@@ -81,7 +81,6 @@ struct WfmItem {
     tags: Vec<String>,
 }
 
-
 #[derive(Deserialize)]
 struct StatisticsResponse {
     payload: StatisticsPayload,
@@ -129,7 +128,10 @@ impl MarketClient {
                     if let Ok(data) = std::fs::read_to_string(&cache_path) {
                         if let Ok(map) = serde_json::from_str::<HashMap<String, ItemMeta>>(&data) {
                             *self.items.write().await = map;
-                            log::info!("Loaded {} WFM items from cache", self.items.read().await.len());
+                            log::info!(
+                                "Loaded {} WFM items from cache",
+                                self.items.read().await.len()
+                            );
                             return Ok(());
                         }
                     }
@@ -197,16 +199,20 @@ impl MarketClient {
         }
     }
 
-    // Single HTTP call per item — returns (price, trend) together.
+    // Single HTTP call per item returns (price, trend) together.
     async fn fetch_price_and_trend(&self, url_name: &str) -> (Option<u32>, PriceTrend) {
         // Check both caches first
         let cached_price = {
             let c = self.price_cache.lock().await;
-            c.get(url_name).filter(|e| e.fetched_at.elapsed() < PRICE_CACHE_TTL).map(|e| e.median_plat)
+            c.get(url_name)
+                .filter(|e| e.fetched_at.elapsed() < PRICE_CACHE_TTL)
+                .map(|e| e.median_plat)
         };
         let cached_trend = {
             let c = self.trend_cache.lock().await;
-            c.get(url_name).filter(|e| e.fetched_at.elapsed() < TREND_CACHE_TTL).map(|e| e.trend.clone())
+            c.get(url_name)
+                .filter(|e| e.fetched_at.elapsed() < TREND_CACHE_TTL)
+                .map(|e| e.trend.clone())
         };
         if let (Some(price), Some(trend)) = (cached_price, cached_trend) {
             return (price, trend);
@@ -214,8 +220,20 @@ impl MarketClient {
 
         match self.do_fetch_stats(url_name).await {
             Ok((price, trend)) => {
-                self.price_cache.lock().await.insert(url_name.to_string(), CachedPrice { median_plat: price, fetched_at: Instant::now() });
-                self.trend_cache.lock().await.insert(url_name.to_string(), CachedTrend { trend: trend.clone(), fetched_at: Instant::now() });
+                self.price_cache.lock().await.insert(
+                    url_name.to_string(),
+                    CachedPrice {
+                        median_plat: price,
+                        fetched_at: Instant::now(),
+                    },
+                );
+                self.trend_cache.lock().await.insert(
+                    url_name.to_string(),
+                    CachedTrend {
+                        trend: trend.clone(),
+                        fetched_at: Instant::now(),
+                    },
+                );
                 (price, trend)
             }
             Err(e) => {
@@ -238,21 +256,48 @@ impl MarketClient {
             .await?;
 
         let resp: StatisticsResponse = serde_json::from_str(&text).map_err(|e| {
-            log::warn!("WFM stats parse error for {url_name}: {e} — body prefix: {}", &text[..text.len().min(120)]);
+            log::warn!(
+                "WFM stats parse error for {url_name}: {e} body prefix: {}",
+                &text[..text.len().min(120)]
+            );
             e
         })?;
 
         // Price: prefer last 3 entries in 48h data, fall back to last 7 days
         let mut price_candidates: Vec<f64> = resp
-            .payload.statistics_closed.hours48.iter().rev().take(3)
-            .map(|p| if p.median > 0.0 { p.median } else { p.avg_price })
-            .filter(|&v| v > 0.0).collect();
+            .payload
+            .statistics_closed
+            .hours48
+            .iter()
+            .rev()
+            .take(3)
+            .map(|p| {
+                if p.median > 0.0 {
+                    p.median
+                } else {
+                    p.avg_price
+                }
+            })
+            .filter(|&v| v > 0.0)
+            .collect();
 
         if price_candidates.is_empty() {
             price_candidates = resp
-                .payload.statistics_closed.days90.iter().rev().take(7)
-                .map(|p| if p.median > 0.0 { p.median } else { p.avg_price })
-                .filter(|&v| v > 0.0).collect();
+                .payload
+                .statistics_closed
+                .days90
+                .iter()
+                .rev()
+                .take(7)
+                .map(|p| {
+                    if p.median > 0.0 {
+                        p.median
+                    } else {
+                        p.avg_price
+                    }
+                })
+                .filter(|&v| v > 0.0)
+                .collect();
         }
 
         let price = if price_candidates.is_empty() {
@@ -269,8 +314,11 @@ impl MarketClient {
         for point in &resp.payload.statistics_closed.days90 {
             if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&point.datetime) {
                 let age = (now - dt.with_timezone(&Utc)).num_days();
-                if age <= 2 { recent.push(point.avg_price); }
-                else if age <= 7 { older.push(point.avg_price); }
+                if age <= 2 {
+                    recent.push(point.avg_price);
+                } else if age <= 7 {
+                    older.push(point.avg_price);
+                }
             }
         }
 
@@ -279,16 +327,22 @@ impl MarketClient {
         } else {
             let r = recent.iter().sum::<f64>() / recent.len() as f64;
             let o = older.iter().sum::<f64>() / older.len() as f64;
-            if o == 0.0 { PriceTrend::Flat }
-            else {
+            if o == 0.0 {
+                PriceTrend::Flat
+            } else {
                 let pct = (r - o) / o * 100.0;
-                if pct > 5.0 { PriceTrend::Up } else if pct < -5.0 { PriceTrend::Down } else { PriceTrend::Flat }
+                if pct > 5.0 {
+                    PriceTrend::Up
+                } else if pct < -5.0 {
+                    PriceTrend::Down
+                } else {
+                    PriceTrend::Flat
+                }
             }
         };
 
         Ok((price, trend))
     }
-
 }
 
 fn canonical(name: &str) -> String {

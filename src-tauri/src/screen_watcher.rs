@@ -1,7 +1,7 @@
+use serde::Serialize;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 const TRIGGER_COOLDOWN_MS: u64 = 25_000;
@@ -41,7 +41,11 @@ fn run(app: AppHandle, cancel: Arc<AtomicBool>) {
                 .load(Ordering::Relaxed)
         };
         // interval=0 means manual-only; still sleep 1s to check cancel/warframe status
-        std::thread::sleep(Duration::from_secs(if interval_secs == 0 { 1 } else { interval_secs as u64 }));
+        std::thread::sleep(Duration::from_secs(if interval_secs == 0 {
+            1
+        } else {
+            interval_secs as u64
+        }));
 
         if cancel.load(Ordering::Relaxed) {
             log::info!("Screen watcher stopped");
@@ -83,29 +87,37 @@ fn run(app: AppHandle, cancel: Arc<AtomicBool>) {
             match state.reward_template.get() {
                 Some(tmpl) => {
                     let score = crate::ocr::reward_template_score(tmpl);
-                    let matched = score.map(|s| s < crate::template::REWARD_THRESHOLD).unwrap_or(false);
+                    let matched = score
+                        .map(|s| s < crate::template::REWARD_THRESHOLD)
+                        .unwrap_or(false);
                     (score, matched)
                 }
-                None => (None, true), // template not yet loaded — let OCR attempt
+                None => (None, true), // template not yet loaded let OCR attempt
             }
         };
 
         if !template_matched {
             if dev_mode {
-                let _ = app.emit("dev-scan", DevScanData {
-                    ts: now_ms(),
-                    sad_score,
-                    sad_threshold: crate::template::REWARD_THRESHOLD,
-                    template_matched: false,
-                    ocr_lines: vec![],
-                    items_found: vec![],
-                    duration_ms: tick_start.elapsed().as_millis() as u64,
-                });
+                let _ = app.emit(
+                    "dev-scan",
+                    DevScanData {
+                        ts: now_ms(),
+                        sad_score,
+                        sad_threshold: crate::template::REWARD_THRESHOLD,
+                        template_matched: false,
+                        ocr_lines: vec![],
+                        items_found: vec![],
+                        duration_ms: tick_start.elapsed().as_millis() as u64,
+                    },
+                );
             }
             continue;
         }
 
-        crate::app_log::info(&app, format!("Template matched (SAD={sad_score:?}), running OCR"));
+        crate::app_log::info(
+            &app,
+            format!("Template matched (SAD={sad_score:?}), running OCR"),
+        );
         scanning.store(true, Ordering::Relaxed);
 
         let app2 = app.clone();
@@ -126,21 +138,32 @@ fn run(app: AppHandle, cancel: Arc<AtomicBool>) {
             match crate::ocr::scan_rewards(&state.drops, y_min, &lang).await {
                 Ok((items, raw_lines)) => {
                     if dev_mode {
-                        let _ = app2.emit("dev-scan", DevScanData {
-                            ts: now_ms(),
-                            sad_score,
-                            sad_threshold: crate::template::REWARD_THRESHOLD,
-                            template_matched: true,
-                            ocr_lines: raw_lines,
-                            items_found: items.clone(),
-                            duration_ms: ocr_start.elapsed().as_millis() as u64,
-                        });
+                        let _ = app2.emit(
+                            "dev-scan",
+                            DevScanData {
+                                ts: now_ms(),
+                                sad_score,
+                                sad_threshold: crate::template::REWARD_THRESHOLD,
+                                template_matched: true,
+                                ocr_lines: raw_lines,
+                                items_found: items.clone(),
+                                duration_ms: ocr_start.elapsed().as_millis() as u64,
+                            },
+                        );
                     }
                     if items.len() >= 2 {
-                        crate::app_log::info(&app2, format!("Screen OCR: {} items — {}", items.len(), items.join(", ")));
+                        crate::app_log::info(
+                            &app2,
+                            format!("Screen OCR: {} items {}", items.len(), items.join(", ")),
+                        );
                         if let Err(e) = crate::commands::do_trigger_overlay(
-                            items, "screen".into(), &state, &app2,
-                        ).await {
+                            items,
+                            "screen".into(),
+                            &state,
+                            &app2,
+                        )
+                        .await
+                        {
                             log::error!("Overlay trigger failed: {e}");
                         }
                         last_trigger2.store(now_ms(), Ordering::Relaxed);
@@ -149,15 +172,18 @@ fn run(app: AppHandle, cancel: Arc<AtomicBool>) {
                 Err(e) => {
                     log::debug!("OCR: {e}");
                     if dev_mode {
-                        let _ = app2.emit("dev-scan", DevScanData {
-                            ts: now_ms(),
-                            sad_score,
-                            sad_threshold: crate::template::REWARD_THRESHOLD,
-                            template_matched: true,
-                            ocr_lines: vec![format!("OCR error: {e}")],
-                            items_found: vec![],
-                            duration_ms: ocr_start.elapsed().as_millis() as u64,
-                        });
+                        let _ = app2.emit(
+                            "dev-scan",
+                            DevScanData {
+                                ts: now_ms(),
+                                sad_score,
+                                sad_threshold: crate::template::REWARD_THRESHOLD,
+                                template_matched: true,
+                                ocr_lines: vec![format!("OCR error: {e}")],
+                                items_found: vec![],
+                                duration_ms: ocr_start.elapsed().as_millis() as u64,
+                            },
+                        );
                     }
                 }
             }

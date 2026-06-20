@@ -11,11 +11,13 @@ pub mod storage;
 pub mod template;
 
 use std::path::PathBuf;
-use std::sync::{atomic::{AtomicBool, AtomicU32, Ordering}, Arc, OnceLock};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU32, Ordering},
+    Arc, OnceLock,
+};
 use tauri::Manager;
 
-pub const OCR_Y_MIN_DEFAULT: u32 =
-    (template::TMPL_Y + template::TMPL_H) * 10_000 / template::REF_H;
+pub const OCR_Y_MIN_DEFAULT: u32 = (template::TMPL_Y + template::TMPL_H) * 10_000 / template::REF_H;
 
 pub struct AppState {
     pub market: market::MarketClient,
@@ -54,11 +56,15 @@ impl AppState {
 }
 
 pub fn app_data_dir(app: &tauri::App) -> PathBuf {
-    app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."))
+    app.path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
 }
 
 pub fn app_data_dir_from_handle(app: &tauri::AppHandle) -> PathBuf {
-    app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."))
+    app.path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
 }
 
 fn init_logging() {
@@ -72,21 +78,26 @@ fn init_logging() {
     let _ = std::fs::create_dir_all(&log_dir);
     let log_path = log_dir.join("reliccracker.log");
 
-    let level = if cfg!(debug_assertions) { LevelFilter::Debug } else { LevelFilter::Info };
-    let config = ConfigBuilder::new()
-        .set_time_format_rfc3339()
-        .build();
+    let level = if cfg!(debug_assertions) {
+        LevelFilter::Debug
+    } else {
+        LevelFilter::Info
+    };
+    let config = ConfigBuilder::new().set_time_format_rfc3339().build();
 
     let file = std::fs::File::create(&log_path).ok();
-    let mut loggers: Vec<Box<dyn SharedLogger>> = vec![
-        TermLogger::new(level, config.clone(), TerminalMode::Mixed, ColorChoice::Auto),
-    ];
+    let mut loggers: Vec<Box<dyn SharedLogger>> = vec![TermLogger::new(
+        level,
+        config.clone(),
+        TerminalMode::Mixed,
+        ColorChoice::Auto,
+    )];
     if let Some(f) = file {
         loggers.push(WriteLogger::new(level, config, f));
     }
     let _ = CombinedLogger::init(loggers);
 
-    log::info!("RelicCracker starting — log: {}", log_path.display());
+    log::info!("RelicCracker starting log: {}", log_path.display());
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -135,14 +146,23 @@ pub fn run() {
             let state = app.state::<AppState>();
             state.storage.init(&db_path)?;
 
-            let init_lang = if let Ok(data) = std::fs::read_to_string(data_dir.join("settings.json")) {
-                if let Ok(s) = serde_json::from_str::<commands::Settings>(&data) {
-                    state.dev_mode.store(s.dev_mode, Ordering::Relaxed);
-                    state.scan_delay_ms.store(s.scan_delay_ms, Ordering::Relaxed);
-                    state.poll_interval_secs.store(s.poll_interval_secs, Ordering::Relaxed);
-                    s.game_language
-                } else { "en".to_string() }
-            } else { "en".to_string() };
+            let init_lang =
+                if let Ok(data) = std::fs::read_to_string(data_dir.join("settings.json")) {
+                    if let Ok(s) = serde_json::from_str::<commands::Settings>(&data) {
+                        state.dev_mode.store(s.dev_mode, Ordering::Relaxed);
+                        state
+                            .scan_delay_ms
+                            .store(s.scan_delay_ms, Ordering::Relaxed);
+                        state
+                            .poll_interval_secs
+                            .store(s.poll_interval_secs, Ordering::Relaxed);
+                        s.game_language
+                    } else {
+                        "en".to_string()
+                    }
+                } else {
+                    "en".to_string()
+                };
 
             {
                 let mut lang = state.game_language.blocking_write();
@@ -163,7 +183,10 @@ pub fn run() {
                 let tmpl_path = cache_dir.join("reward_template.png");
                 match template::ensure(&tmpl_path).await {
                     Ok(()) => match template::load(&tmpl_path) {
-                        Ok(t) => { let _ = tmpl_slot.set(t); log::info!("Reward template loaded"); }
+                        Ok(t) => {
+                            let _ = tmpl_slot.set(t);
+                            log::info!("Reward template loaded");
+                        }
                         Err(e) => log::error!("Template load: {e}"),
                     },
                     Err(e) => log::error!("Template download: {e}"),
@@ -198,7 +221,13 @@ fn setup_tray(app: &mut tauri::App) -> anyhow::Result<()> {
             .map(|s| s.scan_hotkey)
             .unwrap_or_else(|| "F9".into())
     };
-    let scan_item = MenuItem::with_id(app, "scan", format!("Scan Now ({})", scan_key), true, None::<&str>)?;
+    let scan_item = MenuItem::with_id(
+        app,
+        "scan",
+        format!("Scan Now ({})", scan_key),
+        true,
+        None::<&str>,
+    )?;
     let dashboard_item = MenuItem::with_id(app, "dashboard", "Show Dashboard", true, None::<&str>)?;
     let sep = tauri::menu::PredefinedMenuItem::separator(app)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit RelicCracker", true, None::<&str>)?;

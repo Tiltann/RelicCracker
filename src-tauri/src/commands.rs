@@ -11,7 +11,6 @@ use crate::{
     AppState,
 };
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RewardResult {
     pub item_name: String,
@@ -64,10 +63,18 @@ pub struct Settings {
     pub pick_preference: String,
 }
 
-fn default_poll_interval() -> u32 { 2 }
-fn default_game_language() -> String { "en".to_string() }
-fn default_true() -> bool { true }
-fn default_pick_preference() -> String { "plat".to_string() }
+fn default_poll_interval() -> u32 {
+    2
+}
+fn default_game_language() -> String {
+    "en".to_string()
+}
+fn default_true() -> bool {
+    true
+}
+fn default_pick_preference() -> String {
+    "plat".to_string()
+}
 
 impl Default for Settings {
     fn default() -> Self {
@@ -114,7 +121,11 @@ pub async fn do_trigger_overlay(
         let now = std::time::Instant::now();
         if let Some(t) = *last {
             if t.elapsed().as_secs() < 60 {
-                log::info!("Dedup: skipping {} trigger ({:.0}s since last)", source, t.elapsed().as_secs_f32());
+                log::info!(
+                    "Dedup: skipping {} trigger ({:.0}s since last)",
+                    source,
+                    t.elapsed().as_secs_f32()
+                );
                 return Ok(());
             }
         }
@@ -130,7 +141,10 @@ pub async fn do_trigger_overlay(
             .unwrap_or_default()
     };
 
-    crate::app_log::info(app, format!("Overlay triggered ({source}): {}", items.join(", ")));
+    crate::app_log::info(
+        app,
+        format!("Overlay triggered ({source}): {}", items.join(", ")),
+    );
 
     let mut translated: Vec<(String, u32, bool)> = Vec::new();
     for path in &items {
@@ -207,7 +221,11 @@ pub async fn do_trigger_overlay(
                 ducats: data.ducats,
                 vaulted: data.vaulted,
                 is_best,
-                best_reason: if is_best { best_reason.clone() } else { String::new() },
+                best_reason: if is_best {
+                    best_reason.clone()
+                } else {
+                    String::new()
+                },
             }
         })
         .collect();
@@ -260,7 +278,9 @@ fn pick_best(
 
     match preference {
         "ducats" => {
-            let (idx, data) = reward_data.iter().enumerate()
+            let (idx, data) = reward_data
+                .iter()
+                .enumerate()
                 .max_by_key(|(_, r)| r.ducats)
                 .unwrap();
             let reason = format!("Most ducats ({} \u{25c8})", data.ducats);
@@ -270,7 +290,9 @@ fn pick_best(
             let needed_set: std::collections::HashSet<&str> =
                 needed_items.iter().map(|s| s.as_str()).collect();
 
-            let best_needed = reward_data.iter().enumerate()
+            let best_needed = reward_data
+                .iter()
+                .enumerate()
                 .filter(|(_, r)| needed_set.contains(r.item_name.as_str()))
                 .max_by_key(|(_, r)| r.median_plat.unwrap_or(0));
 
@@ -290,7 +312,9 @@ fn pick_best(
 }
 
 fn pick_best_by_plat(reward_data: &[RewardData]) -> (Option<usize>, String) {
-    let (idx, data) = reward_data.iter().enumerate()
+    let (idx, data) = reward_data
+        .iter()
+        .enumerate()
         .max_by_key(|(_, r)| {
             let plat = r.median_plat.unwrap_or(0) as f64 * 10.0;
             let vaulted_bonus = if r.vaulted { 50.0 } else { 0.0 };
@@ -319,10 +343,7 @@ pub async fn dismiss_overlay(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn scan_via_ocr(
-    _state: State<'_, AppState>,
-    app: AppHandle,
-) -> Result<(), String> {
+pub async fn scan_via_ocr(_state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
     do_ocr_scan(&app).await.map_err(|e| e.to_string())
 }
 
@@ -339,15 +360,18 @@ pub async fn do_ocr_scan(app: &AppHandle) -> Result<()> {
         Err(e) => {
             crate::app_log::error(app, format!("OCR scan failed: {e}"));
             if dev_mode {
-                let _ = app.emit("dev-scan", crate::screen_watcher::DevScanData {
-                    ts: crate::screen_watcher::now_ms(),
-                    sad_score: None,
-                    sad_threshold: crate::template::REWARD_THRESHOLD,
-                    template_matched: true,
-                    ocr_lines: vec![format!("OCR error: {e}")],
-                    items_found: vec![],
-                    duration_ms: scan_start.elapsed().as_millis() as u64,
-                });
+                let _ = app.emit(
+                    "dev-scan",
+                    crate::screen_watcher::DevScanData {
+                        ts: crate::screen_watcher::now_ms(),
+                        sad_score: None,
+                        sad_threshold: crate::template::REWARD_THRESHOLD,
+                        template_matched: true,
+                        ocr_lines: vec![format!("OCR error: {e}")],
+                        items_found: vec![],
+                        duration_ms: scan_start.elapsed().as_millis() as u64,
+                    },
+                );
             }
             crate::overlay::show(app, 1)?;
             app.emit("overlay-no-results", ())?;
@@ -356,15 +380,18 @@ pub async fn do_ocr_scan(app: &AppHandle) -> Result<()> {
     };
 
     if dev_mode {
-        let _ = app.emit("dev-scan", crate::screen_watcher::DevScanData {
-            ts: crate::screen_watcher::now_ms(),
-            sad_score: None,
-            sad_threshold: crate::template::REWARD_THRESHOLD,
-            template_matched: true,
-            ocr_lines: raw_lines.clone(),
-            items_found: items.clone(),
-            duration_ms: scan_start.elapsed().as_millis() as u64,
-        });
+        let _ = app.emit(
+            "dev-scan",
+            crate::screen_watcher::DevScanData {
+                ts: crate::screen_watcher::now_ms(),
+                sad_score: None,
+                sad_threshold: crate::template::REWARD_THRESHOLD,
+                template_matched: true,
+                ocr_lines: raw_lines.clone(),
+                items_found: items.clone(),
+                duration_ms: scan_start.elapsed().as_millis() as u64,
+            },
+        );
     }
 
     if items.is_empty() {
@@ -374,7 +401,10 @@ pub async fn do_ocr_scan(app: &AppHandle) -> Result<()> {
         return Ok(());
     }
 
-    crate::app_log::info(app, format!("OCR: {} item(s) found — {}", items.len(), items.join(", ")));
+    crate::app_log::info(
+        app,
+        format!("OCR: {} item(s) found {}", items.len(), items.join(", ")),
+    );
     if items.len() < 4 {
         for line in &raw_lines {
             if line.to_lowercase().contains("prime")
@@ -401,10 +431,7 @@ pub async fn get_history(
 }
 
 #[tauri::command]
-pub async fn record_pick(
-    _session_id: i64,
-    _item_name: String,
-) -> Result<(), String> {
+pub async fn record_pick(_session_id: i64, _item_name: String) -> Result<(), String> {
     Ok(())
 }
 
@@ -439,8 +466,12 @@ pub async fn save_settings(
     use tauri::Emitter;
 
     state.dev_mode.store(settings.dev_mode, Ordering::Relaxed);
-    state.scan_delay_ms.store(settings.scan_delay_ms, Ordering::Relaxed);
-    state.poll_interval_secs.store(settings.poll_interval_secs, Ordering::Relaxed);
+    state
+        .scan_delay_ms
+        .store(settings.scan_delay_ms, Ordering::Relaxed);
+    state
+        .poll_interval_secs
+        .store(settings.poll_interval_secs, Ordering::Relaxed);
 
     // Reload drops DB when language changes
     let old_lang = state.game_language.read().await.clone();
@@ -486,10 +517,7 @@ pub async fn save_settings(
 }
 
 #[tauri::command]
-pub async fn restart_watcher(
-    state: State<'_, AppState>,
-    app: AppHandle,
-) -> Result<(), String> {
+pub async fn restart_watcher(state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
     state.watcher_cancel.store(true, Ordering::Relaxed);
     state.log_watcher_cancel.store(true, Ordering::Relaxed);
 
@@ -511,11 +539,11 @@ pub async fn get_watcher_status(state: State<'_, AppState>) -> Result<String, St
     let interval = state.poll_interval_secs.load(Ordering::Relaxed);
 
     Ok(if !wf_running {
-        "Paused — Warframe not running".to_string()
+        "Paused Warframe not running".to_string()
     } else if interval == 0 {
-        "Active — manual scan only (auto-scan off)".to_string()
+        "Active manual scan only (auto-scan off)".to_string()
     } else {
-        format!("Active — scanning every {}s", interval)
+        format!("Active scanning every {}s", interval)
     })
 }
 
@@ -570,7 +598,11 @@ pub async fn debug_scan_file(
     let (matched_items, raw_lines) = crate::ocr::scan_image_file(&state.drops, &path, y_min)
         .await
         .map_err(|e| e.to_string())?;
-    Ok(FileScanResult { raw_lines, matched_items, db_item_count })
+    Ok(FileScanResult {
+        raw_lines,
+        matched_items,
+        db_item_count,
+    })
 }
 
 #[tauri::command]
@@ -586,7 +618,8 @@ pub async fn debug_overlay_from_file(
 
     if items.is_empty() {
         crate::overlay::show(&app, 1).map_err(|e| e.to_string())?;
-        app.emit("overlay-no-results", ()).map_err(|e| e.to_string())?;
+        app.emit("overlay-no-results", ())
+            .map_err(|e| e.to_string())?;
         return Ok(());
     }
 
@@ -617,7 +650,10 @@ pub async fn lookup_item(
         None => (name.clone(), 0, false),
     };
 
-    let reward = state.market.get_reward_data(&display_name, ducats, false).await;
+    let reward = state
+        .market
+        .get_reward_data(&display_name, ducats, false)
+        .await;
 
     Ok(ItemLookupResult {
         found_in_db,
@@ -636,16 +672,23 @@ pub async fn lookup_item(
 pub async fn get_completion_data(state: State<'_, AppState>) -> Result<CompletionData, String> {
     let prime_sets = state.drops.prime_sets().await;
     let wanted_sets = state.storage.get_wanted_sets().map_err(|e| e.to_string())?;
-    let owned_components = state.storage.get_owned_components().map_err(|e| e.to_string())?;
-    Ok(CompletionData { prime_sets, wanted_sets, owned_components })
+    let owned_components = state
+        .storage
+        .get_owned_components()
+        .map_err(|e| e.to_string())?;
+    Ok(CompletionData {
+        prime_sets,
+        wanted_sets,
+        owned_components,
+    })
 }
 
 #[tauri::command]
-pub async fn toggle_wanted_set(
-    name: String,
-    state: State<'_, AppState>,
-) -> Result<bool, String> {
-    state.storage.toggle_wanted_set(&name).map_err(|e| e.to_string())
+pub async fn toggle_wanted_set(name: String, state: State<'_, AppState>) -> Result<bool, String> {
+    state
+        .storage
+        .toggle_wanted_set(&name)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -653,7 +696,10 @@ pub async fn toggle_owned_component(
     name: String,
     state: State<'_, AppState>,
 ) -> Result<bool, String> {
-    state.storage.toggle_owned_component(&name).map_err(|e| e.to_string())
+    state
+        .storage
+        .toggle_owned_component(&name)
+        .map_err(|e| e.to_string())
 }
 
 /// Returns the latest release tag from GitHub if it's newer than the running version,
@@ -678,5 +724,9 @@ pub async fn check_for_updates() -> Option<String> {
     let tag = resp["tag_name"].as_str()?.to_string();
     let current = format!("v{}", env!("CARGO_PKG_VERSION"));
 
-    if tag != current { Some(tag) } else { None }
+    if tag != current {
+        Some(tag)
+    } else {
+        None
+    }
 }

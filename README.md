@@ -1,6 +1,6 @@
 # RelicCracker
 
-> **Work in progress** — not ready for general use.
+> **Work in progress** not ready for general use.
 
 Warframe relic reward overlay. When you crack a relic, it shows platinum prices and ducat values for each reward before you pick one.
 
@@ -57,7 +57,7 @@ Pre-built binaries for Windows, macOS (universal), and Linux are attached to eac
 1. Launch RelicCracker
 2. Open Warframe and crack a relic
 3. The overlay appears automatically at the reward screen
-4. Pick your item — the overlay dismisses itself after a few seconds, or press `F10`
+4. Pick your item the overlay dismisses itself after a few seconds, or press `F10`
 
 Manual scan: `F9`
 
@@ -73,7 +73,7 @@ Supported: English, Deutsch, Français, Español, Italiano, Polski, Português, 
 
 1. Screen is captured on a configurable interval while Warframe is running
 2. A template SAD (sum of absolute differences) check discards non-reward frames instantly
-3. OCR reads item names from the lower portion of the screen (60–85% height) — Windows.Media.Ocr on Windows, Tesseract on Linux
+3. OCR reads item names from the lower portion of the screen (60–85% height) Windows.Media.Ocr on Windows, Tesseract on Linux
 4. Names are matched against the warframestat.us item database; Levenshtein fallback handles OCR typos
 5. Prices are fetched in parallel from warframe.market's 48h statistics endpoint
 
@@ -84,13 +84,13 @@ Supported: English, Deutsch, Français, Español, Italiano, Polski, Português, 
 
 ## Built with
 
-- [Tauri 2](https://tauri.app/) — app framework (Rust + WebView2)
+- [Tauri 2](https://tauri.app/) app framework (Rust + WebView2)
 - [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/)
 - [Tailwind CSS v4](https://tailwindcss.com/)
-- [windows-rs](https://github.com/microsoft/windows-rs) — Windows.Media.Ocr bindings
-- [leptess](https://github.com/houqp/leptess) — Tesseract OCR bindings (Linux)
-- [xcap](https://github.com/nashaofu/xcap) — cross-platform screen capture
-- [reqwest](https://github.com/seanmonstar/reqwest) — HTTP client
+- [windows-rs](https://github.com/microsoft/windows-rs) Windows.Media.Ocr bindings
+- [leptess](https://github.com/houqp/leptess) Tesseract OCR bindings (Linux)
+- [xcap](https://github.com/nashaofu/xcap) cross-platform screen capture
+- [reqwest](https://github.com/seanmonstar/reqwest) HTTP client
 
 ## Trademark notice
 
@@ -100,7 +100,7 @@ The platinum and ducat icons used in this app are property of Digital Extremes L
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT see [LICENSE](LICENSE).
 
 This license applies to the source code only. Game assets (icons, names, item data) remain the property of Digital Extremes Ltd.
 

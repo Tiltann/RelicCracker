@@ -30,6 +30,14 @@ pub struct OverlayPayload {
     pub source: String,
     pub dismiss_hotkey: String,
     pub auto_dismiss_secs: u32,
+    pub needed_items: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CompletionData {
+    pub prime_sets: Vec<crate::drops::PrimeSetInfo>,
+    pub wanted_sets: Vec<String>,
+    pub owned_components: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,6 +57,8 @@ pub struct Settings {
     pub ee_log_path: Option<String>,
     #[serde(default = "default_true")]
     pub ee_log_enabled: bool,
+    #[serde(default)]
+    pub completions_enabled: bool,
 }
 
 fn default_poll_interval() -> u32 { 2 }
@@ -67,6 +77,7 @@ impl Default for Settings {
             game_language: "en".to_string(),
             ee_log_path: None,
             ee_log_enabled: true,
+            completions_enabled: false,
         }
     }
 }
@@ -105,7 +116,7 @@ pub async fn do_trigger_overlay(
         *last = Some(now);
     }
 
-    log::info!("Triggering overlay with {} items (source: {})", items.len(), source);
+    crate::app_log::info(app, format!("Overlay triggered ({source}): {}", items.join(", ")));
 
     let mut translated: Vec<(String, u32, bool)> = Vec::new();
     for path in &items {
@@ -174,12 +185,43 @@ pub async fn do_trigger_overlay(
     let session = RewardSession {
         session_at: Utc::now().to_rfc3339(),
         relic_name: None,
-        rewards_json,
+        rewards_json: rewards_json.clone(),
         source: source.clone(),
     };
-    if let Err(e) = state.storage.record_session(&session) {
-        log::error!("Failed to record session: {}", e);
+    match state.storage.record_session(&session) {
+        Ok(id) => {
+            let row = HistoryRow {
+                id,
+                session_at: session.session_at.clone(),
+                relic_name: session.relic_name.clone(),
+                rewards_json,
+                source: source.clone(),
+            };
+            let _ = app.emit("session-added", &row);
+        }
+        Err(e) => log::error!("Failed to record session: {}", e),
     }
+
+    // Compute which items from this reward set are needed for wanted prime sets
+    let needed_items: Vec<String> = {
+        let wanted = state.storage.get_wanted_sets().unwrap_or_default();
+        if wanted.is_empty() {
+            Vec::new()
+        } else {
+            let owned = state.storage.get_owned_components().unwrap_or_default();
+            let owned_set: std::collections::HashSet<&str> =
+                owned.iter().map(|s| s.as_str()).collect();
+            let prime_sets = state.drops.prime_sets().await;
+            let wanted_set: std::collections::HashSet<&str> =
+                wanted.iter().map(|s| s.as_str()).collect();
+            prime_sets
+                .into_iter()
+                .filter(|ps| wanted_set.contains(ps.name.as_str()))
+                .flat_map(|ps| ps.components.into_iter())
+                .filter(|comp| !owned_set.contains(comp.as_str()))
+                .collect()
+        }
+    };
 
     crate::overlay::show(app, results.len())?;
 
@@ -191,7 +233,7 @@ pub async fn do_trigger_overlay(
             .map(|s| (s.dismiss_hotkey, s.auto_dismiss_secs))
             .unwrap_or_else(|| ("F10".into(), 15))
     };
-    let payload = OverlayPayload { rewards: results, source, dismiss_hotkey, auto_dismiss_secs };
+    let payload = OverlayPayload { rewards: results, source, dismiss_hotkey, auto_dismiss_secs, needed_items };
     if let Some(overlay_win) = app.get_webview_window("overlay") {
         overlay_win.emit("overlay-data", &payload)?;
     }
@@ -218,11 +260,12 @@ pub async fn do_ocr_scan(app: &AppHandle) -> Result<()> {
     let dev_mode = state.dev_mode.load(Ordering::Relaxed);
     let scan_start = std::time::Instant::now();
 
+    crate::app_log::info(app, "Manual OCR scan started");
     let lang = state.game_language.read().await.clone();
     let (items, raw_lines) = match crate::ocr::scan_rewards(&state.drops, y_min, &lang).await {
         Ok(result) => result,
         Err(e) => {
-            log::error!("OCR scan failed: {e}");
+            crate::app_log::error(app, format!("OCR scan failed: {e}"));
             if dev_mode {
                 let _ = app.emit("dev-scan", crate::screen_watcher::DevScanData {
                     ts: crate::screen_watcher::now_ms(),
@@ -253,12 +296,13 @@ pub async fn do_ocr_scan(app: &AppHandle) -> Result<()> {
     }
 
     if items.is_empty() {
-        log::info!("OCR scan: no recognizable items");
+        crate::app_log::warn(app, "OCR: no recognizable items found");
         crate::overlay::show(app, 1)?;
         app.emit("overlay-no-results", ())?;
         return Ok(());
     }
 
+    crate::app_log::info(app, format!("OCR: {} items — {}", items.len(), items.join(", ")));
     do_trigger_overlay(items, "ocr".into(), &state, app).await
 }
 
@@ -355,6 +399,7 @@ pub async fn save_settings(
     }
 
     let _ = app.emit("dev-mode", settings.dev_mode);
+    let _ = app.emit("settings-saved", ());
     crate::hotkeys::update(&app).map_err(|e| e.to_string())
 }
 
@@ -499,6 +544,32 @@ pub async fn lookup_item(
         vaulted: reward.vaulted,
         url_name: reward.url_name,
     })
+}
+
+// ── Completions ───────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn get_completion_data(state: State<'_, AppState>) -> Result<CompletionData, String> {
+    let prime_sets = state.drops.prime_sets().await;
+    let wanted_sets = state.storage.get_wanted_sets().map_err(|e| e.to_string())?;
+    let owned_components = state.storage.get_owned_components().map_err(|e| e.to_string())?;
+    Ok(CompletionData { prime_sets, wanted_sets, owned_components })
+}
+
+#[tauri::command]
+pub async fn toggle_wanted_set(
+    name: String,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    state.storage.toggle_wanted_set(&name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn toggle_owned_component(
+    name: String,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    state.storage.toggle_owned_component(&name).map_err(|e| e.to_string())
 }
 
 /// Returns the latest release tag from GitHub if it's newer than the running version,

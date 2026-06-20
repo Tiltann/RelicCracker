@@ -45,6 +45,12 @@ impl Storage {
                  relic_name  TEXT,
                  rewards     TEXT NOT NULL,
                  source      TEXT NOT NULL DEFAULT 'log'
+             );
+             CREATE TABLE IF NOT EXISTS wanted_sets (
+                 set_name    TEXT PRIMARY KEY
+             );
+             CREATE TABLE IF NOT EXISTS owned_components (
+                 item_name   TEXT PRIMARY KEY
              );",
         )?;
 
@@ -53,7 +59,7 @@ impl Storage {
         Ok(())
     }
 
-    pub fn record_session(&self, session: &RewardSession) -> Result<()> {
+    pub fn record_session(&self, session: &RewardSession) -> Result<i64> {
         let guard = self.conn.lock().unwrap();
         let conn = guard.as_ref().ok_or_else(|| anyhow::anyhow!("DB not initialized"))?;
 
@@ -68,7 +74,57 @@ impl Storage {
             ],
         )?;
 
-        Ok(())
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn get_wanted_sets(&self) -> Result<Vec<String>> {
+        let guard = self.conn.lock().unwrap();
+        let conn = guard.as_ref().ok_or_else(|| anyhow::anyhow!("DB not initialized"))?;
+        let mut stmt = conn.prepare("SELECT set_name FROM wanted_sets ORDER BY set_name")?;
+        let rows = stmt.query_map([], |row| row.get(0))?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn toggle_wanted_set(&self, name: &str) -> Result<bool> {
+        let guard = self.conn.lock().unwrap();
+        let conn = guard.as_ref().ok_or_else(|| anyhow::anyhow!("DB not initialized"))?;
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM wanted_sets WHERE set_name = ?1",
+            params![name],
+            |r| r.get(0),
+        )?;
+        if count > 0 {
+            conn.execute("DELETE FROM wanted_sets WHERE set_name = ?1", params![name])?;
+            Ok(false)
+        } else {
+            conn.execute("INSERT INTO wanted_sets (set_name) VALUES (?1)", params![name])?;
+            Ok(true)
+        }
+    }
+
+    pub fn get_owned_components(&self) -> Result<Vec<String>> {
+        let guard = self.conn.lock().unwrap();
+        let conn = guard.as_ref().ok_or_else(|| anyhow::anyhow!("DB not initialized"))?;
+        let mut stmt = conn.prepare("SELECT item_name FROM owned_components ORDER BY item_name")?;
+        let rows = stmt.query_map([], |row| row.get(0))?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn toggle_owned_component(&self, name: &str) -> Result<bool> {
+        let guard = self.conn.lock().unwrap();
+        let conn = guard.as_ref().ok_or_else(|| anyhow::anyhow!("DB not initialized"))?;
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM owned_components WHERE item_name = ?1",
+            params![name],
+            |r| r.get(0),
+        )?;
+        if count > 0 {
+            conn.execute("DELETE FROM owned_components WHERE item_name = ?1", params![name])?;
+            Ok(false)
+        } else {
+            conn.execute("INSERT INTO owned_components (item_name) VALUES (?1)", params![name])?;
+            Ok(true)
+        }
     }
 
     pub fn delete_session(&self, id: i64) -> Result<()> {

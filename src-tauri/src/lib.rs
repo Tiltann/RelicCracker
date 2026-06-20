@@ -1,3 +1,4 @@
+pub mod app_log;
 pub mod commands;
 pub mod drops;
 pub mod hotkeys;
@@ -123,6 +124,9 @@ pub fn run() {
             commands::debug_overlay_from_file,
             commands::lookup_item,
             commands::check_for_updates,
+            commands::get_completion_data,
+            commands::toggle_wanted_set,
+            commands::toggle_owned_component,
         ])
         .setup(|app| {
             let data_dir = app_data_dir(app);

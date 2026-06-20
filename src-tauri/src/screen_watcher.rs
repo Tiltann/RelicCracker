@@ -105,7 +105,7 @@ fn run(app: AppHandle, cancel: Arc<AtomicBool>) {
             continue;
         }
 
-        log::debug!("Template match (SAD={sad_score:?}) — running OCR");
+        crate::app_log::info(&app, format!("Template matched (SAD={sad_score:?}), running OCR"));
         scanning.store(true, Ordering::Relaxed);
 
         let app2 = app.clone();
@@ -137,7 +137,7 @@ fn run(app: AppHandle, cancel: Arc<AtomicBool>) {
                         });
                     }
                     if items.len() >= 2 {
-                        log::info!("Screen watcher: {} items, showing overlay", items.len());
+                        crate::app_log::info(&app2, format!("Screen OCR: {} items — {}", items.len(), items.join(", ")));
                         if let Err(e) = crate::commands::do_trigger_overlay(
                             items, "screen".into(), &state, &app2,
                         ).await {

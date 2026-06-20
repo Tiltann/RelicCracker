@@ -34,27 +34,51 @@ function IconSettings() {
   );
 }
 
-export function Layout() {
-  const [wfRunning, setWfRunning] = useState<boolean | null>(null);
-  const [devMode, setDevMode]     = useState(false);
-  const [scanKey, setScanKey]     = useState("F9");
-  const [dismissKey, setDismissKey] = useState("F10");
-  const [updateTag, setUpdateTag] = useState<string | null>(null);
+function IconLogs() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+      <path d="M2 3h10M2 7h7M2 11h5"/>
+    </svg>
+  );
+}
 
-  useEffect(() => {
-    invoke<boolean>("get_warframe_status").then(setWfRunning).catch(() => {});
+function IconCompletions() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="7" cy="7" r="5.5"/>
+      <path d="M4.5 7l1.75 1.75L9.5 5"/>
+    </svg>
+  );
+}
+
+export function Layout() {
+  const [wfRunning, setWfRunning]             = useState<boolean | null>(null);
+  const [devMode, setDevMode]                 = useState(false);
+  const [completionsEnabled, setCompletionsEnabled] = useState(false);
+  const [scanKey, setScanKey]                 = useState("F9");
+  const [dismissKey, setDismissKey]           = useState("F10");
+  const [updateTag, setUpdateTag]             = useState<string | null>(null);
+
+  function loadSettings() {
     invoke<Settings>("get_settings").then(s => {
       setDevMode(s.dev_mode);
       setScanKey(s.scan_hotkey);
       setDismissKey(s.dismiss_hotkey);
+      setCompletionsEnabled(s.completions_enabled ?? false);
     }).catch(() => {});
+  }
+
+  useEffect(() => {
+    invoke<boolean>("get_warframe_status").then(setWfRunning).catch(() => {});
+    loadSettings();
     invoke<string | null>("check_for_updates").then(tag => {
       if (tag) setUpdateTag(tag);
     }).catch(() => {});
 
-    const unWf  = listen<boolean>("warframe-status", e => setWfRunning(e.payload));
-    const unDev = listen<boolean>("dev-mode", e => setDevMode(e.payload));
-    return () => { unWf.then(f => f()); unDev.then(f => f()); };
+    const unWf       = listen<boolean>("warframe-status", e => setWfRunning(e.payload));
+    const unDev      = listen<boolean>("dev-mode", e => setDevMode(e.payload));
+    const unSettings = listen("settings-saved", () => loadSettings());
+    return () => { unWf.then(f => f()); unDev.then(f => f()); unSettings.then(f => f()); };
   }, []);
 
   const wfClosed = wfRunning === false;
@@ -88,6 +112,20 @@ export function Layout() {
               Dashboard
             </NavLink>
           </li>
+          <li>
+            <NavLink to="/logs" className={navClass}>
+              <IconLogs />
+              Logs
+            </NavLink>
+          </li>
+          {completionsEnabled && (
+            <li>
+              <NavLink to="/completions" className={navClass}>
+                <IconCompletions />
+                Completions
+              </NavLink>
+            </li>
+          )}
           <li>
             <NavLink to="/settings" className={navClass}>
               <IconSettings />

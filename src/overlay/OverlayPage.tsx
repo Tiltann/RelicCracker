@@ -75,7 +75,12 @@ export function OverlayPage() {
       {/* Cards row */}
       <div className="flex items-stretch gap-[6px] px-[6px] pt-[6px] flex-1 min-h-0">
         {payload.rewards.map((reward, i) => (
-          <RewardCard key={i} reward={reward} index={i} />
+          <RewardCard
+            key={i}
+            reward={reward}
+            index={i}
+            needed={(payload.needed_items ?? []).includes(reward.item_name)}
+          />
         ))}
       </div>
 

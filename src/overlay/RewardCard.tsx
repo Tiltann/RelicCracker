@@ -11,9 +11,10 @@ const RARITY: Record<string, { label: string; color: string; glow: string; bar: 
 interface Props {
   reward: RewardResult;
   index: number;
+  needed?: boolean;
 }
 
-export function RewardCard({ reward, index }: Props) {
+export function RewardCard({ reward, index, needed }: Props) {
   const r = RARITY[reward.rarity] ?? RARITY.Common;
 
   return (
@@ -46,17 +47,27 @@ export function RewardCard({ reward, index }: Props) {
                 style={{ color: r.color }}>
             {r.label}
           </span>
-          {reward.is_best && (
-            <span
-              className="text-[7px] font-black tracking-[0.12em] uppercase px-[5px] py-[1.5px] rounded-[3px] leading-none"
-              style={{
-                color: "#0a0c10",
-                background: `linear-gradient(90deg, ${r.color}, #e8c060)`,
-              }}
-            >
-              BEST
-            </span>
-          )}
+          <div className="flex items-center gap-1">
+            {needed && (
+              <span
+                className="text-[7px] font-black tracking-[0.1em] uppercase px-[5px] py-[1.5px] rounded-[3px] leading-none"
+                style={{ color: "#52c27a", background: "rgba(82,194,122,0.15)", border: "1px solid rgba(82,194,122,0.3)" }}
+              >
+                NEED
+              </span>
+            )}
+            {reward.is_best && (
+              <span
+                className="text-[7px] font-black tracking-[0.12em] uppercase px-[5px] py-[1.5px] rounded-[3px] leading-none"
+                style={{
+                  color: "#0a0c10",
+                  background: `linear-gradient(90deg, ${r.color}, #e8c060)`,
+                }}
+              >
+                BEST
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Item name */}

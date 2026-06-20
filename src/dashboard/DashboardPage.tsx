@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type { HistoryRow, RewardResult } from "../types";
 import platIcon from "../assets/plat.png";
 
@@ -13,6 +14,11 @@ export function DashboardPage() {
   useEffect(() => {
     invoke<string>("get_watcher_status").then(setStatus).catch(() => {});
     loadHistory();
+
+    const unsub = listen<HistoryRow>("session-added", e => {
+      setHistory(prev => [e.payload, ...prev]);
+    });
+    return () => { unsub.then(f => f()); };
   }, []);
 
   function loadHistory() {

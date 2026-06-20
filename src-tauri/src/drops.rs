@@ -34,6 +34,12 @@ pub struct ItemInfo {
     pub ducats: u32,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct PrimeSetInfo {
+    pub name: String,
+    pub components: Vec<String>,
+}
+
 #[derive(Clone)]
 pub struct DropDatabase {
     by_unique: Arc<RwLock<HashMap<String, ItemInfo>>>,
@@ -213,6 +219,32 @@ impl DropDatabase {
             return Some(info);
         }
         self.ocr_match(name).await
+    }
+
+    /// Group all Prime items in the DB by their set name ("X Prime").
+    /// Items with " prime" in the name (e.g. "Ash Prime Neuroptics Blueprint")
+    /// are grouped under "Ash Prime". Sorted alphabetically.
+    pub async fn prime_sets(&self) -> Vec<PrimeSetInfo> {
+        use std::collections::BTreeMap;
+        let by_name = self.by_name.read().await;
+        // set_name (proper case) -> component full names
+        let mut sets: BTreeMap<String, Vec<String>> = BTreeMap::new();
+
+        for info in by_name.values() {
+            let lower = info.name.to_lowercase();
+            if let Some(idx) = lower.find(" prime") {
+                // ASCII-safe: byte index matches in original string
+                let set_name = info.name[..idx + " prime".len()].to_string();
+                sets.entry(set_name).or_default().push(info.name.clone());
+            }
+        }
+
+        sets.into_iter()
+            .map(|(name, mut components)| {
+                components.sort();
+                PrimeSetInfo { name, components }
+            })
+            .collect()
     }
 }
 

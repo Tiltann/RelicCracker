@@ -16,6 +16,24 @@ export interface OverlayPayload {
   source: "log" | "ocr" | "manual" | "test";
   dismiss_hotkey: string;
   auto_dismiss_secs: number;
+  needed_items: string[];
+}
+
+export interface LogEntry {
+  ts: number;
+  level: "info" | "warn" | "error";
+  msg: string;
+}
+
+export interface PrimeSetInfo {
+  name: string;
+  components: string[];
+}
+
+export interface CompletionData {
+  prime_sets: PrimeSetInfo[];
+  wanted_sets: string[];
+  owned_components: string[];
 }
 
 export interface HistoryRow {
@@ -36,6 +54,7 @@ export interface Settings {
   game_language: string;
   ee_log_path: string | null;
   ee_log_enabled: boolean;
+  completions_enabled: boolean;
 }
 
 export interface InventoryEntry {

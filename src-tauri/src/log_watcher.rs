@@ -163,7 +163,7 @@ fn process_lines(lines: &[String], state: &mut WatcherState, app: &AppHandle) {
                     continue;
                 }
             }
-            log::info!("Relic reward screen detected");
+            crate::app_log::info(app, "EE.log: reward screen detected");
             state.last_trigger = Some(Instant::now());
             state.collecting = true;
             state.rewards.clear();
@@ -221,7 +221,7 @@ fn extract_reward_path(line: &str) -> Option<String> {
 
 fn emit_rewards(state: &WatcherState, app: &AppHandle) {
     let rewards = state.rewards.clone();
-    log::info!("Triggering overlay with {} rewards from log", rewards.len());
+    crate::app_log::info(app, format!("EE.log: {} rewards found", rewards.len()));
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         use tauri::Manager;

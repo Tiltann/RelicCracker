@@ -195,9 +195,10 @@ export function SettingsPage() {
   const [dismissHotkey, setDismissHotkey] = useState<string>("F10");
   const [devMode, setDevMode]             = useState(false);
   const [gameLang, setGameLang]           = useState("en");
-  const [eeLogPath, setEeLogPath]         = useState<string>("");
-  const [eeLogEnabled, setEeLogEnabled]   = useState(true);
-  const [saveState, setSaveState]         = useState<SaveState>("idle");
+  const [eeLogPath, setEeLogPath]                   = useState<string>("");
+  const [eeLogEnabled, setEeLogEnabled]             = useState(true);
+  const [completionsEnabled, setCompletionsEnabled] = useState(false);
+  const [saveState, setSaveState]                   = useState<SaveState>("idle");
   const [testing, setTesting]             = useState(false);
   const [ocrLines, setOcrLines]           = useState<string[] | null>(null);
   const [ocrLoading, setOcrLoading]       = useState(false);
@@ -214,6 +215,7 @@ export function SettingsPage() {
       setGameLang(s.game_language ?? "en");
       setEeLogPath(s.ee_log_path ?? "");
       setEeLogEnabled(s.ee_log_enabled ?? true);
+      setCompletionsEnabled(s.completions_enabled ?? false);
     });
   }, []);
 
@@ -254,6 +256,7 @@ export function SettingsPage() {
       game_language: gameLang,
       ee_log_path: eeLogPath.trim() || null,
       ee_log_enabled: eeLogEnabled,
+      completions_enabled: completionsEnabled,
     };
 
     try {
@@ -578,6 +581,41 @@ export function SettingsPage() {
               </div>
             </>
           )}
+        </section>
+
+        {/* ── Completions ── */}
+        <section className="flex flex-col gap-3">
+          <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.1em] pb-2" style={{ color: "#3a4050", borderBottom: "1px solid #1c1f27" }}>
+            Completions (optional)
+          </h2>
+          <label className="flex items-center justify-between max-w-[420px] cursor-pointer group">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[14px] text-wf-text">Enable Completions tab</span>
+              <span className="text-[12px] text-wf-muted">
+                Track which Prime sets you need and mark components as owned. Overlay badges items you need.
+              </span>
+            </div>
+            <button
+              role="switch"
+              aria-checked={completionsEnabled}
+              onClick={() => setCompletionsEnabled(v => !v)}
+              className="relative w-10 h-5 rounded-full border transition-colors cursor-pointer shrink-0 ml-4"
+              style={{
+                background: completionsEnabled ? "rgba(82,194,122,0.25)" : "rgba(255,255,255,0.05)",
+                borderColor: completionsEnabled ? "rgba(82,194,122,0.5)" : "#1c1f27",
+              }}
+            >
+              <span
+                className="absolute top-0.5 rounded-full transition-all duration-150"
+                style={{
+                  width: "14px", height: "14px",
+                  background: completionsEnabled ? "#52c27a" : "#3a4050",
+                  left: completionsEnabled ? "calc(100% - 16px)" : "2px",
+                  boxShadow: completionsEnabled ? "0 0 4px #52c27a80" : undefined,
+                }}
+              />
+            </button>
+          </label>
         </section>
 
         {/* ── OCR Debug ── */}

@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+@theme {
+  --color-wf-bg:       #0a0c10;
+  --color-wf-surface:  #13161c;
+  --color-wf-surface2: #1b1f28;
+  --color-wf-border:   #252830;
+  --color-wf-text:     #e4e8f0;
+  --color-wf-muted:    #6a7080;
+  --color-wf-accent:   #c49a3c;
+  --color-wf-accent2:  #e8c06a;
+  --color-wf-success:  #52c27a;
+  --color-wf-danger:   #e05252;
+  --color-wf-info:     #5284e0;
+  --font-sans: "Segoe UI", system-ui, sans-serif;
+
+  --animate-card-in:      card-in   240ms cubic-bezier(0.22,0.61,0.36,1) both;
+  --animate-fade-up:      fade-up   220ms cubic-bezier(0.22,0.61,0.36,1) both;
+  --animate-fade-in:      fade-in   180ms ease both;
+  --animate-glow-gold:    glow-gold 2.6s ease-in-out infinite;
+  --animate-pulse-dot:    pulse-dot 2.2s ease-in-out infinite;
+  --animate-slide-right:  slide-right 200ms ease both;
+  --animate-best-pulse:   best-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)   scale(1);    }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes glow-gold {
+  0%, 100% { box-shadow: 0 0 6px rgba(196,154,60,0.2); }
+  50%       { box-shadow: 0 0 18px rgba(196,154,60,0.55), 0 0 32px rgba(196,154,60,0.2); }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.8); }
+}
+@keyframes slide-right {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes best-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(196,154,60,0.4), 0 0 12px rgba(196,154,60,0.15); }
+  50%       { box-shadow: 0 0 0 1px rgba(232,192,106,0.7), 0 0 20px rgba(196,154,60,0.4); }
+}
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-wf-border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-wf-muted); }
+
+html, body, #root {
+  height: 100%;
+  background: var(--color-wf-bg);
+  color: var(--color-wf-text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Wf corner accent — used in overlay cards */
+.wf-corner::before,
+.wf-corner::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-color: currentColor;
+  border-style: solid;
+  border-width: 0;
+  opacity: 0.5;
+}
+.wf-corner::before {
+  top: 3px; left: 3px;
+  border-top-width: 1px;
+  border-left-width: 1px;
+}
+.wf-corner::after {
+  bottom: 3px; right: 3px;
+  border-bottom-width: 1px;
+  border-right-width: 1px;
+}

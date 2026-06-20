@@ -1,0 +1,22 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "Main window permissions",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-set-focus",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "global-shortcut:allow-is-registered",
+    "sql:allow-execute",
+    "sql:allow-select",
+    "sql:allow-load",
+    "shell:allow-open",
+    "opener:allow-open-url",
+    "process:allow-exit",
+    "dialog:allow-open"
+  ]
+}

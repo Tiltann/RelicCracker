@@ -31,8 +31,8 @@ fn emit_dev_event(app: &AppHandle, kind: &'static str, text: impl Into<String>) 
     );
 }
 
-const TRIGGER_PATTERN: &str = "Pause_SelectRewards";
-const REWARD_PATTERN: &str = "RelicReward";
+const TRIGGER_PATTERN: &str = "OpenVoidProjectionRewardScreenRMI";
+const REWARD_PATTERN: &str = "gets reward /Lotus";
 const COLLECT_TIMEOUT: Duration = Duration::from_millis(2000);
 const DEBOUNCE_SECS: Duration = Duration::from_secs(30);
 const POLL_TIMEOUT: Duration = Duration::from_millis(500);
@@ -190,8 +190,8 @@ fn process_lines(lines: &[String], state: &mut WatcherState, app: &AppHandle) {
     for line in lines {
         // Surface any potentially relevant line to the dev monitor
         if line.contains(TRIGGER_PATTERN)
-            || line.contains(REWARD_PATTERN)
-            || line.contains("SelectReward")
+            || line.contains("VoidProjections")
+            || line.contains("ProjectionRewardChoice")
         {
             emit_dev_event(app, "line", line.trim());
         }
@@ -257,13 +257,11 @@ fn flush_if_timed_out(state: &mut WatcherState, app: &AppHandle) {
 }
 
 fn extract_reward_path(line: &str) -> Option<String> {
-    if !line.contains(REWARD_PATTERN) {
-        return None;
-    }
-    let after = line.split_once("RelicReward")?.1.trim();
-    let token = after.split_whitespace().next()?;
-    if token.starts_with('/') || token.contains("Lotus") || token.contains("Prime") {
-        Some(token.to_string())
+    // Format: "VoidProjections: {id} gets reward /Lotus/StoreItems/..."
+    let after = line.split_once("gets reward ")?.1;
+    let path = after.split_whitespace().next()?;
+    if path.starts_with('/') {
+        Some(path.to_string())
     } else {
         None
     }

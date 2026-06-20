@@ -17,9 +17,6 @@ jobs:
           - platform: windows-latest
             rust-targets: ''
             args: ''
-          - platform: macos-latest
-            rust-targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
-            args: '--target universal-apple-darwin'
           - platform: ubuntu-22.04
             rust-targets: ''
             args: ''

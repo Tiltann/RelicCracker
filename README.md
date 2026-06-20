@@ -17,11 +17,10 @@ Warframe relic reward overlay. When you crack a relic, it shows platinum prices 
 
 | Platform | Screen detection | OCR | Overlay |
 |---|---|---|---|
-| Windows 10/11 | ✓ | ✓ | ✓ |
-| macOS | ✓ | — | ✓ |
-| Linux (X11) | ✓ | — | ✓ |
+| Windows 10/11 | yes | yes | yes |
+| Linux (X11/Wayland) | yes | no | yes |
 
-OCR uses Windows.Media.Ocr. On other platforms you can still use the manual scan hotkey when the reward screen is visible.
+OCR uses Windows.Media.Ocr and is Windows-only. On Linux you can use EE.log watching (enabled in Settings) for automatic detection, or the manual scan hotkey as a fallback.
 
 ## Build
 

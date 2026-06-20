@@ -26,6 +26,12 @@ export interface LogEntry {
   msg: string;
 }
 
+export interface LogWatcherEvent {
+  ts: number;
+  kind: "state" | "line" | "trigger" | "debounce" | "reward" | "flush";
+  text: string;
+}
+
 export interface PrimeComponent {
   name: string;
   image_url: string | null;

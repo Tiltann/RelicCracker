@@ -1,4 +1,5 @@
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
+use serde::Serialize;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::PathBuf;
 use std::sync::{
@@ -6,7 +7,29 @@ use std::sync::{
     mpsc, Arc,
 };
 use std::time::{Duration, Instant};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
+
+#[derive(Serialize, Clone)]
+struct DevLogEvent {
+    ts: u64,
+    kind: &'static str,
+    text: String,
+}
+
+fn emit_dev_event(app: &AppHandle, kind: &'static str, text: impl Into<String>) {
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let _ = app.emit(
+        "log-watcher-event",
+        DevLogEvent {
+            ts,
+            kind,
+            text: text.into(),
+        },
+    );
+}
 
 const TRIGGER_PATTERN: &str = "Pause_SelectRewards";
 const REWARD_PATTERN: &str = "RelicReward";
@@ -57,6 +80,7 @@ fn run_watcher(app: AppHandle, cancel: Arc<AtomicBool>) -> anyhow::Result<()> {
             .unwrap_or(true)
     };
     if !enabled {
+        emit_dev_event(&app, "state", "EE.log watcher disabled in settings");
         log::info!("EE.log watcher disabled in settings");
         return Ok(());
     }
@@ -64,6 +88,11 @@ fn run_watcher(app: AppHandle, cancel: Arc<AtomicBool>) -> anyhow::Result<()> {
     let log_path = ee_log_path(&app);
 
     if !log_path.exists() {
+        emit_dev_event(
+            &app,
+            "state",
+            format!("File not found: {}", log_path.display()),
+        );
         log::warn!(
             "EE.log not found at {}. Watcher disabled; use Ctrl+Shift+Space or fix path in Settings.",
             log_path.display()
@@ -80,7 +109,7 @@ fn run_watcher(app: AppHandle, cancel: Arc<AtomicBool>) -> anyhow::Result<()> {
     )?;
     watcher.watch(&log_path, RecursiveMode::NonRecursive)?;
 
-    // Start at end of file — don't replay old data
+    // Start at end of file don't replay old data
     let mut read_pos: u64 = {
         let mut f = std::fs::File::open(&log_path)?;
         f.seek(SeekFrom::End(0))?
@@ -88,6 +117,7 @@ fn run_watcher(app: AppHandle, cancel: Arc<AtomicBool>) -> anyhow::Result<()> {
 
     let mut state = WatcherState::new();
     log::info!("EE.log watcher started: {}", log_path.display());
+    emit_dev_event(&app, "state", format!("Watching: {}", log_path.display()));
 
     loop {
         if cancel.load(Ordering::Relaxed) {
@@ -97,7 +127,7 @@ fn run_watcher(app: AppHandle, cancel: Arc<AtomicBool>) -> anyhow::Result<()> {
 
         match rx.recv_timeout(POLL_TIMEOUT) {
             Ok(Ok(_event)) => {
-                if let Some(lines) = read_new_lines(&log_path, &mut read_pos) {
+                if let Some(lines) = read_new_lines(&log_path, &mut read_pos, &app) {
                     process_lines(&lines, &mut state, &app);
                 }
             }
@@ -114,12 +144,13 @@ fn run_watcher(app: AppHandle, cancel: Arc<AtomicBool>) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn read_new_lines(path: &PathBuf, pos: &mut u64) -> Option<Vec<String>> {
+fn read_new_lines(path: &PathBuf, pos: &mut u64, app: &AppHandle) -> Option<Vec<String>> {
     let file = std::fs::File::open(path).ok()?;
     let file_size = file.metadata().ok()?.len();
 
     if file_size < *pos {
         *pos = 0; // file was truncated (new session)
+        emit_dev_event(app, "state", "File reset new Warframe session");
     }
 
     if file_size == *pos {
@@ -157,12 +188,30 @@ fn read_new_lines(path: &PathBuf, pos: &mut u64) -> Option<Vec<String>> {
 
 fn process_lines(lines: &[String], state: &mut WatcherState, app: &AppHandle) {
     for line in lines {
+        // Surface any potentially relevant line to the dev monitor
+        if line.contains(TRIGGER_PATTERN)
+            || line.contains(REWARD_PATTERN)
+            || line.contains("SelectReward")
+        {
+            emit_dev_event(app, "line", line.trim());
+        }
+
         if line.contains(TRIGGER_PATTERN) {
             if let Some(last) = state.last_trigger {
                 if last.elapsed() < DEBOUNCE_SECS {
+                    emit_dev_event(
+                        app,
+                        "debounce",
+                        format!(
+                            "Debounced ({:.0}s since last need {}s gap)",
+                            last.elapsed().as_secs_f32(),
+                            DEBOUNCE_SECS.as_secs()
+                        ),
+                    );
                     continue;
                 }
             }
+            emit_dev_event(app, "trigger", "Trigger matched starting collection");
             crate::app_log::info(app, "EE.log: reward screen detected");
             state.last_trigger = Some(Instant::now());
             state.collecting = true;
@@ -186,6 +235,7 @@ fn process_lines(lines: &[String], state: &mut WatcherState, app: &AppHandle) {
         }
 
         if let Some(path) = extract_reward_path(line) {
+            emit_dev_event(app, "reward", &path);
             state.rewards.push(path);
             if state.rewards.len() >= 4 {
                 emit_rewards(state, app);
@@ -220,6 +270,11 @@ fn extract_reward_path(line: &str) -> Option<String> {
 }
 
 fn emit_rewards(state: &WatcherState, app: &AppHandle) {
+    emit_dev_event(
+        app,
+        "flush",
+        format!("Flushed {} reward(s) → overlay", state.rewards.len()),
+    );
     let rewards = state.rewards.clone();
     crate::app_log::info(app, format!("EE.log: {} rewards found", rewards.len()));
     let app = app.clone();
@@ -285,7 +340,7 @@ fn default_ee_log_path_impl() -> PathBuf {
                 return p;
             }
         }
-        // Not found — return the most common path as a placeholder so the user
+        // Not found return the most common path as a placeholder so the user
         // knows where to look.
         return home
             .join(".local/share/Steam/steamapps/compatdata")

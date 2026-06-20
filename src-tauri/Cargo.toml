@@ -1,6 +1,6 @@
 [package]
 name = "relic-cracker"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 description = "Warframe relic reward overlay with live WF Market prices"
 
